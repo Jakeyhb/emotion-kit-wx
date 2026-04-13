@@ -12,7 +12,8 @@ const { runDashScopeConnectionTest, runEmotionReflectDryRun } = require('../../.
 const CLOUD_DEFAULT_TIMEOUT_MS = 60000;
 const PENDING_STALE_MS = 90 * 1000;
 const DEBUG_RUN_ID = 'dryrun-debug';
-const DRY_RUN_UI_WALL_MS = 45000;
+/** 与「我的」页深度自检一致：须长于 cloudAi 内层墙钟，避免先弹「等待过久」而任务仍在跑 */
+const DRY_RUN_UI_WALL_MS = CLOUD_AI_CLIENT_WALL_MS + 20000;
 
 function emitDebugLog(hypothesisId, location, message, data) {
   // #region agent log

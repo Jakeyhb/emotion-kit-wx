@@ -4,7 +4,12 @@
  *
  * @returns {Promise<{ ok: boolean, title: string, content: string }>}
  */
-const { CLOUD_CALL_FUNCTION_MAX_MS, isCloudInvokeTimeout, runReflectJobViaClient } = require('./cloudAi');
+const {
+  CLOUD_AI_POLL_MAX_MS,
+  CLOUD_CALL_FUNCTION_MAX_MS,
+  isCloudInvokeTimeout,
+  runReflectJobViaClient
+} = require('./cloudAi');
 const DEBUG_RUN_ID = 'dryrun-debug';
 
 function emitDebugLog(hypothesisId, location, message, data) {
@@ -172,7 +177,8 @@ async function runEmotionReflectDryRun() {
     });
     const { whatIsWrong, whatToDo } = await runReflectJobViaClient(wx.cloud, {
       kind: 'dryRun',
-      maxWaitMs: 30000,
+      /** 与记下心情一致：轮询需覆盖「首调 3s 限制 + 百炼 10～60s + 单次 status 可能慢至 ~22s」 */
+      maxWaitMs: CLOUD_AI_POLL_MAX_MS,
       payload: {
         dryRun: true,
         emotions: [{ name: '焦虑', degree: 3 }],
