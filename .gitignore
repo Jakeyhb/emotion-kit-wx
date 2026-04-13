@@ -5,3 +5,4 @@ miniprogram_npm/
 .env
 .env.local
 .cursor/
+node-ai-service/public/log-admin/

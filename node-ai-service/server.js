@@ -2,9 +2,19 @@ const express = require("express");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
+const db = require("./db");
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
+
+const CORS_ORIGIN = String(process.env.CORS_ORIGIN || "").trim();
+if (CORS_ORIGIN) {
+  const cors = require("cors");
+  const origins = CORS_ORIGIN.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  app.use(cors({ origin: origins.length === 1 ? origins[0] : origins, credentials: true }));
+}
 
 const PORT = Number(process.env.PORT || 8787);
 const DASHSCOPE_API_KEY = String(process.env.DASHSCOPE_API_KEY || "").trim();
@@ -24,6 +34,7 @@ const LOG_READ_MAX_LINES = Math.min(Math.max(Number(process.env.LOG_READ_MAX_LIN
 
 const LOG_DIR = path.join(__dirname, "logs");
 const APP_LOG_FILE = path.join(LOG_DIR, "app.log");
+const REACT_ADMIN_DIR = path.join(__dirname, "public", "log-admin");
 
 function ensureLogDir() {
   try {
@@ -58,6 +69,12 @@ function log(phase, meta) {
     const s = JSON.stringify(payload);
     console.log("[node-ai-service]", s);
     appendFileLog(s);
+    db.insertLogRow({
+      phase: String(payload.phase || phase || "").slice(0, 128),
+      level: "info",
+      meta_json: payload,
+      created_at: new Date(payload.t),
+    });
   } catch (e) {
     console.log("[node-ai-service]", phase, meta);
     appendFileLog(JSON.stringify({ t: nowIso(), phase: "log_stringify_fail", err: String(e) }));
@@ -208,7 +225,36 @@ app.get("/healthz", (req, res) => {
     host: DASHSCOPE_API_HOST,
     authRequired: !!SERVICE_TOKEN,
     adminLog: !!adminToken(),
+    mysql: db.mysqlEnabled(),
   });
+});
+
+app.get("/api/logs/meta", withAdminAuth, (req, res) => {
+  res.json({
+    ok: true,
+    mysql: db.mysqlEnabled(),
+  });
+});
+
+app.get("/api/logs", withAdminAuth, async (req, res) => {
+  if (!db.mysqlEnabled()) {
+    return res.status(503).json({
+      ok: false,
+      errMsg: "MySQL 未配置：请设置 MYSQL_HOST 等环境变量，并执行 schema.sql 建表",
+    });
+  }
+  const page = parseInt(String(req.query.page || "1"), 10) || 1;
+  const pageSize = parseInt(String(req.query.pageSize || "50"), 10) || 50;
+  const phase = req.query.phase != null ? String(req.query.phase) : "";
+  const from = req.query.from || null;
+  const to = req.query.to || null;
+  try {
+    const result = await db.queryLogs({ page, pageSize, phase, from, to });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    const errMsg = (e && e.message) || String(e);
+    res.status(500).json({ ok: false, errMsg });
+  }
 });
 
 app.get("/admin/api/logs", withAdminAuth, (req, res) => {
@@ -228,7 +274,15 @@ app.get("/admin/api/logs", withAdminAuth, (req, res) => {
   });
 });
 
+if (fs.existsSync(path.join(REACT_ADMIN_DIR, "index.html"))) {
+  app.use("/log-admin", express.static(REACT_ADMIN_DIR));
+  app.get("/log-admin", (req, res) => res.redirect(302, "/log-admin/"));
+}
+
 app.get("/admin", (req, res) => {
+  if (fs.existsSync(path.join(REACT_ADMIN_DIR, "index.html"))) {
+    return res.redirect(302, "/log-admin/");
+  }
   res.type("html").send(`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -362,5 +416,7 @@ app.listen(PORT, () => {
     authRequired: !!SERVICE_TOKEN,
     adminLog: !!adminToken(),
     logFile: APP_LOG_FILE,
+    mysql: db.mysqlEnabled(),
+    reactAdmin: fs.existsSync(path.join(REACT_ADMIN_DIR, "index.html")),
   });
 });

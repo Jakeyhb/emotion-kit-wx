@@ -2,20 +2,42 @@
 
 This service is a bridge between your mini program cloud functions and DashScope.
 
-It exposes one endpoint:
+## API
 
-- `POST /ai/reflect` for chat-style inference (used by your cloud functions)
+- `POST /ai/reflect` — chat-style inference (used by your cloud functions)
+- `GET /healthz` — health check (`mysql` / `reactAdmin` flags when enabled)
 
-And one health endpoint:
+## Logs
 
-- `GET /healthz`
+### File tail (legacy)
 
-Log viewer (same Bearer token as API, default `SERVICE_TOKEN`):
+- `GET /admin` — redirects to `/log-admin/` when the React build exists; otherwise a simple HTML page for `logs/app.log` tail
+- `GET /admin/api/logs?lines=300` — JSON tail from file (requires `Authorization: Bearer …`)
 
-- `GET /admin` — simple HTML page to browse `logs/app.log` tail
-- `GET /admin/api/logs?lines=300` — JSON tail lines (requires `Authorization: Bearer …`)
+### MySQL + React admin (recommended)
 
-Optional env: `LOG_ADMIN_TOKEN` (if set, only this token can open `/admin`; API `/ai/reflect` still uses `SERVICE_TOKEN`).
+1. Create a MySQL database and run `schema.sql`.
+2. Set env: `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`.
+3. Build the React UI from repo root:
+
+```bash
+cd log-admin-ui
+npm install
+npm run build
+```
+
+Output goes to `node-ai-service/public/log-admin/`. Restart the Node process.
+
+4. Open `http://your-host:8787/log-admin/` (or via Nginx), paste **Bearer Token** (`SERVICE_TOKEN` or `LOG_ADMIN_TOKEN`).
+
+REST API (same auth):
+
+- `GET /api/logs/meta` — `{ mysql: true|false }`
+- `GET /api/logs?page=1&pageSize=50&phase=...&from=ISO&to=ISO` — paginated rows from `app_logs`
+
+Optional: `CORS_ORIGIN=http://localhost:5173` for Vite dev (`npm run dev` in `log-admin-ui`).
+
+Optional env: `LOG_ADMIN_TOKEN` — if set, only this token can use `/admin` and `/api/logs`; `/ai/reflect` still uses `SERVICE_TOKEN`.
 
 ## 1) Install and run
 
@@ -24,18 +46,25 @@ cd node-ai-service
 npm install
 ```
 
-Set environment variables (or use your deployment platform's secret config):
+Environment variables (see `.env.example`):
 
 - `PORT` default `8787`
 - `DASHSCOPE_API_KEY` required
 - `DASHSCOPE_API_HOST` optional, default `dashscope.aliyuncs.com`
 - `DASHSCOPE_MODEL` optional, default `qwen3-max`
 - `SERVICE_TOKEN` optional but recommended
+- MySQL variables optional — when set, structured logs are stored in `app_logs`
 
 Start:
 
 ```bash
 npm start
+```
+
+Shortcut to build admin UI (from `node-ai-service`):
+
+```bash
+npm run build:admin
 ```
 
 ## 2) Test quickly
