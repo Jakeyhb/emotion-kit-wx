@@ -47,10 +47,12 @@ export default function LoginPage() {
     >
       <Card style={{ width: 400, maxWidth: "100%" }} title="emotion-kit-ai 管理后台">
         <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-          超级管理员由服务端初始化：环境变量 <Typography.Text code>ADMIN_BOOTSTRAP=1</Typography.Text> 且{" "}
-          <Typography.Text code>admin_users</Typography.Text> 为空时，会创建{" "}
-          <Typography.Text code>admin</Typography.Text> / <Typography.Text code>admin</Typography.Text>
-          。登录后请删除该环境变量并修改密码。
+          超级管理员由服务端初始化：环境变量 <Typography.Text code>ADMIN_BOOTSTRAP=1</Typography.Text>（也支持{" "}
+          <Typography.Text code>true</Typography.Text>）且 <Typography.Text code>admin_users</Typography.Text>{" "}
+          为空时，会创建 <Typography.Text code>admin</Typography.Text> /{" "}
+          <Typography.Text code>admin</Typography.Text>。若库里已有 admin 但密码不对，可临时同时设置{" "}
+          <Typography.Text code>ADMIN_BOOTSTRAP_RESET_ADMIN=1</Typography.Text>
+          后重启服务一次以重置为默认密码，然后立刻删掉上述变量并改密。
         </Typography.Paragraph>
         <Form
           layout="vertical"

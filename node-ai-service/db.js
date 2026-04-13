@@ -155,6 +155,19 @@ async function insertAdmin({ username, password_hash, role }) {
   await p.execute("INSERT INTO admin_users (username, password_hash, role) VALUES (?, ?, ?)", [u, h, r]);
 }
 
+/** 按用户名更新密码哈希（管理后台救急重置用） */
+async function updateAdminPasswordHash(username, password_hash) {
+  const p = getPool();
+  if (!p) throw new Error("mysql not configured");
+  const u = String(username || "").trim().slice(0, 64);
+  const h = String(password_hash || "");
+  if (!u || !h) throw new Error("username or password_hash empty");
+  await p.execute(
+    "UPDATE admin_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP(3) WHERE username = ? LIMIT 1",
+    [h, u]
+  );
+}
+
 module.exports = {
   mysqlEnabled,
   getPool,
@@ -163,4 +176,5 @@ module.exports = {
   countAdmins,
   findAdminByUsername,
   insertAdmin,
+  updateAdminPasswordHash,
 };

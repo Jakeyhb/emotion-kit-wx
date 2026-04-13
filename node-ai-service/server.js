@@ -145,16 +145,35 @@ function withAdminAuth(req, res, next) {
   return next();
 }
 
+function envTruthy(name) {
+  const v = String(process.env[name] || "")
+    .trim()
+    .toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
 async function ensureDefaultAdmin() {
   if (!db.mysqlEnabled()) return;
-  if (String(process.env.ADMIN_BOOTSTRAP || "0") !== "1") return;
+  if (!envTruthy("ADMIN_BOOTSTRAP")) return;
   const cnt = await db.countAdmins();
-  if (cnt > 0) return;
+  if (cnt === 0) {
+    const hash = bcrypt.hashSync("admin", 10);
+    await db.insertAdmin({ username: "admin", password_hash: hash, role: "super_admin" });
+    log("admin_bootstrap", {
+      username: "admin",
+      note: "默认密码 admin；请尽快修改密码并移除环境变量 ADMIN_BOOTSTRAP",
+    });
+    return;
+  }
+  /** 表内已有用户但密码不对时救急：与 ADMIN_BOOTSTRAP 同时设 ADMIN_BOOTSTRAP_RESET_ADMIN=1，启动一次后立刻删掉 */
+  if (!envTruthy("ADMIN_BOOTSTRAP_RESET_ADMIN")) return;
+  const row = await db.findAdminByUsername("admin");
+  if (!row) return;
   const hash = bcrypt.hashSync("admin", 10);
-  await db.insertAdmin({ username: "admin", password_hash: hash, role: "super_admin" });
-  log("admin_bootstrap", {
+  await db.updateAdminPasswordHash("admin", hash);
+  log("admin_bootstrap_password_reset", {
     username: "admin",
-    note: "默认密码 admin；请尽快修改密码并移除环境变量 ADMIN_BOOTSTRAP=1",
+    note: "已将 admin 密码重置为 admin；请登录后修改密码并移除 ADMIN_BOOTSTRAP 与 ADMIN_BOOTSTRAP_RESET_ADMIN",
   });
 }
 
@@ -514,7 +533,8 @@ app.listen(PORT, async () => {
     logFile: APP_LOG_FILE,
     mysql: db.mysqlEnabled(),
     reactAdmin: fs.existsSync(path.join(REACT_ADMIN_DIR, "index.html")),
-    adminBootstrap: String(process.env.ADMIN_BOOTSTRAP || "0") === "1",
+    adminBootstrap: envTruthy("ADMIN_BOOTSTRAP"),
+    adminBootstrapReset: envTruthy("ADMIN_BOOTSTRAP_RESET_ADMIN"),
   });
   try {
     await ensureDefaultAdmin();
