@@ -1,0 +1,41 @@
+/**
+ * 情绪手记 · 雾松绿主题（冷调珍珠底 + 松绿主色）
+ * 色板以本文件为准；页面优先用 var(--ek-*)，避免散落硬编码。
+ */
+page {
+  /* 主色：雾松绿 — 安静、专注，区别于上一版陶土橙 */
+  --ek-primary: #2d6a5f;
+  --ek-primary-pressed: #1f4d45;
+  --ek-link: #358a7c;
+  --ek-focus: #2d6a5f;
+  --ek-primary-soft: rgba(45, 106, 95, 0.12);
+  --ek-primary-softer: rgba(45, 106, 95, 0.06);
+  /* 辅色：灰青线、墨绿灰字 */
+  --ek-secondary: #8aa7a0;
+  --ek-accent: #1e2c29;
+  --ek-accent-pressed: #121a18;
+  --ek-accent-soft: rgba(45, 106, 95, 0.08);
+  /* 珍珠冷底 */
+  --ek-bg: #e9f0ed;
+  --ek-bg-tint: #f4f8f6;
+  --ek-surface: #fdfffe;
+  --ek-text: #1a2624;
+  --ek-text-secondary: rgba(26, 38, 36, 0.72);
+  --ek-text-hint: rgba(26, 38, 36, 0.44);
+  --ek-border: rgba(26, 46, 42, 0.07);
+  --ek-border-strong: rgba(26, 46, 42, 0.12);
+  --ek-border-input: #c8d9d3;
+  --ek-shadow-card: 6rpx 12rpx 44rpx rgba(20, 40, 36, 0.07);
+  --ek-shadow-card-sm: 0 4rpx 20rpx rgba(20, 40, 36, 0.05);
+  --ek-shadow-primary: 0 6rpx 28rpx rgba(45, 106, 95, 0.26);
+  --ek-shadow-primary-soft: 0 8rpx 32rpx rgba(45, 106, 95, 0.12);
+  --ek-radius-block: 24rpx;
+  --ek-radius-inner: 16rpx;
+  --ek-radius-pill: 980rpx;
+  --ek-transition: 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ek-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+  --ek-cal-today: rgba(45, 106, 95, 0.1);
+  --ek-cal-selected: rgba(45, 106, 95, 0.18);
+  --ek-danger: #c44747;
+  --ek-success: #2f8062;
+}

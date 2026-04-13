@@ -1,0 +1,22 @@
+@import '/miniprogram_npm/@vant/weapp/common/index.wxss';
+@import './styles/design-tokens.wxss';
+
+/* 页面背景：奶油纸色实底，与主题变量一致 */
+page {
+  font-family: var(--ek-font);
+  color: var(--ek-text);
+  background-color: var(--ek-bg);
+}
+
+.van-cell__title {
+  font-weight: 500;
+  color: var(--ek-text);
+}
+
+.van-cell__label {
+  color: var(--ek-text-secondary) !important;
+}
+
+.van-cell::after {
+  border-color: var(--ek-border-strong) !important;
+}

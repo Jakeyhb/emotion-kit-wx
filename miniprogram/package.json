@@ -1,0 +1,20 @@
+{
+  "name": "emotion-kit-miniprogram",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "gen-icons": "node scripts/gen-tabbar-icons.js",
+    "pack-vant-npm": "node scripts/pack-vant-npm.js",
+    "postinstall": "node scripts/pack-vant-npm.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@vant/weapp": "^1.11.7"
+  },
+  "devDependencies": {
+    "sharp": "^0.33.0"
+  }
+}

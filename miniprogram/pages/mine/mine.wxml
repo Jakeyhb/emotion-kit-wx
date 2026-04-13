@@ -1,0 +1,101 @@
+<view class="page">
+  <!-- 氛围背景 -->
+  <view class="atmosphere">
+    <view class="atmosphere-blob atmosphere-blob--1" />
+    <view class="atmosphere-blob atmosphere-blob--2" />
+  </view>
+
+  <view class="profile">
+    <view class="avatar-wrap">
+      <view class="avatar-ring">
+        <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+          <image wx:if="{{ avatarUrl }}" class="avatar-img" src="{{ avatarUrl }}" mode="aspectFill" />
+          <view wx:else class="avatar-fallback">
+            <text class="avatar-fallback-char">记</text>
+          </view>
+        </button>
+      </view>
+      <text class="avatar-hint">轻点更换头像</text>
+    </view>
+
+    <view class="name-area">
+      <text class="name-label">称呼</text>
+      <input
+        class="name-input"
+        type="nickname"
+        model:value="{{ nickName }}"
+        placeholder="点此输入或同步微信昵称"
+        placeholder-class="name-placeholder"
+        maxlength="32"
+        bindchange="onNicknameChange"
+        bindblur="onNicknameBlur"
+        bindconfirm="onNicknameConfirm"
+        bindnicknamereview="onNicknameReview"
+      />
+    </view>
+
+    <view class="slogan">
+      <text class="slogan-main">情绪手记</text>
+      <text class="slogan-dot">·</text>
+      <text class="slogan-sub">安心记录每一刻</text>
+    </view>
+    <text class="privacy-line">头像在本机；称呼可与云端同步（换机不丢）</text>
+  </view>
+
+  <view class="sync-pill" wx:if="{{ cloudOk }}">
+    <view class="sync-pill-dot" />
+    <text class="sync-pill-text">云同步已开启</text>
+  </view>
+  <view class="sync-pill sync-pill--warn" wx:else>
+    <text class="sync-pill-text">当前为本地模式，关联云环境后可多端同步</text>
+  </view>
+
+  <view class="list-card">
+    <van-cell-group inset>
+      <view wx:if="{{ cloudOk }}" class="mine-ai-test-row" hover-class="mine-ai-test-row--hover" bindtap="onInitCloudTap">
+        <view class="mine-ai-test-row-body">
+          <text class="mine-ai-test-title">初始化数据库</text>
+          <text class="mine-ai-test-label">首次部署云函数后点一次即可</text>
+        </view>
+        <text class="mine-ai-test-arrow">›</text>
+      </view>
+      <view wx:if="{{ cloudOk }}" class="mine-ai-test-row" hover-class="mine-ai-test-row--hover" bindtap="onAiPingTap">
+        <view class="mine-ai-test-row-body">
+          <text class="mine-ai-test-title">测试 AI 连接</text>
+          <text class="mine-ai-test-label">与记下心情相同链路：本机直调 worker + 百炼最小请求，校验 Key 是否生效</text>
+        </view>
+        <text class="mine-ai-test-arrow">›</text>
+      </view>
+      <view wx:if="{{ cloudOk }}" class="mine-ai-test-row" hover-class="mine-ai-test-row--hover" bindtap="onDeepReflectTap">
+        <view class="mine-ai-test-row-body">
+          <text class="mine-ai-test-title">深度自检（完整解读）</text>
+          <text class="mine-ai-test-label">走与记下心情相同的提示词与解析，仅弹窗展示、不写库（会消耗与真实解读相近的 token）</text>
+        </view>
+        <text class="mine-ai-test-arrow">›</text>
+      </view>
+      <van-cell title="我的背景（给 AI）" value="{{ premise ? '已填写' : '去填写' }}" is-link bind:click="openPremise" />
+      <van-cell title="清空所有心情记录" is-link bind:click="clearAll" />
+    </van-cell-group>
+  </view>
+
+  <view class="footer-hint">AI 解读与「测试 AI 连接」由本机直调 emotionReflectWorker（与记下心情一致）；云函数 emotionReflectWorker、quickstartFunctions 均需配置 DASHSCOPE_API_KEY。</view>
+
+  <view class="mask" wx:if="{{ showPremiseEdit }}" catchtouchmove="noop">
+    <view class="modal" catchtouchmove="noop">
+      <text class="modal-title">我的背景</text>
+      <text class="modal-desc">写一点长期处境或性格特点，AI 在「我怎么了」「我怎么做」里会更贴合你（可选）。</text>
+      <textarea
+        class="modal-input"
+        placeholder="例如：最近工作节奏、与家人关系、身体状态…"
+        value="{{ premiseDraft }}"
+        maxlength="500"
+        show-confirm-bar="{{ false }}"
+        bindinput="onPremiseInput"
+      />
+      <view class="modal-btns">
+        <button class="modal-btn secondary" bindtap="closePremise">取消</button>
+        <button class="modal-btn primary" bindtap="savePremise">保存</button>
+      </view>
+    </view>
+  </view>
+</view>

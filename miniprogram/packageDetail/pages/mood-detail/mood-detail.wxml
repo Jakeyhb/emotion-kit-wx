@@ -1,0 +1,97 @@
+<view class="page">
+  <block wx:if="{{ record }}">
+    <!-- 与老项目 emotion-detail 一致：情境/联想单独成卡置顶 -->
+    <view class="section section-situation" wx:if="{{ record.question3 || record.note }}">
+      <text class="section-title situation-title">{{ record.question3 ? '情境/联想' : '自由联想' }}</text>
+      <text class="situation-body">{{ record.question3 || record.note }}</text>
+    </view>
+
+    <view class="section section-data">
+      <text class="section-title">此刻记录</text>
+      <view class="data-row">
+        <text class="data-label">时间</text>
+        <text class="data-value">{{ displayTime }}</text>
+      </view>
+      <view class="data-row data-row-emotions" wx:if="{{ record.emotionsForDisplay && record.emotionsForDisplay.length }}">
+        <text class="data-label">情绪及强度</text>
+        <view class="emotion-intensity-list">
+          <view
+            wx:for="{{ record.emotionsForDisplay }}"
+            wx:key="rowKey"
+            class="emotion-intensity-row"
+          >
+            <text class="emotion-intensity-left" style="color: {{ item.color }}">{{ item.name }}</text>
+            <view class="degree-line-wrap">
+              <view
+                wx:for="{{ item.degreeSegments }}"
+                wx:for-item="seg"
+                wx:key="value"
+                class="degree-segment {{ seg.isActive ? 'active' : '' }}"
+                style="{{ seg.isActive ? 'background: ' + seg.lineColor : '' }}"
+              ></view>
+            </view>
+            <text class="emotion-intensity-right">{{ item.degreeLabel }}</text>
+          </view>
+        </view>
+      </view>
+      <view class="data-row" wx:elif="{{ record.emotionsDisplay }}">
+        <text class="data-label">情绪及强度</text>
+        <text class="data-value tags-value">{{ record.emotionsDisplay }}</text>
+      </view>
+      <view class="data-row" wx:elif="{{ record.moodLabel }}">
+        <text class="data-label">此刻感受</text>
+        <view class="mood-tag" style="background-color: {{ record.moodColor }}">{{ record.moodLabel }}</view>
+      </view>
+      <view class="data-row" wx:if="{{ record.tagsDisplay && !record.emotionsDisplay }}">
+        <text class="data-label">勾选（情绪/防御/身体）</text>
+        <text class="data-value tags-value">{{ record.tagsDisplay }}</text>
+      </view>
+    </view>
+
+    <!-- 与 game-time-tracker-wx emotion-detail 一致：有 aiResult 即展示两块；我怎么做优先分段《重点》否则整段 -->
+    <view class="section section-ai" wx:if="{{ record.aiResult }}">
+      <text class="section-title section-title-ai">我怎么了</text>
+      <text class="section-desc">此刻的状态</text>
+      <text class="block-text">{{ record.aiResult.whatIsWrong }}</text>
+    </view>
+    <view class="section section-ai" wx:if="{{ record.aiResult }}">
+      <text class="section-title section-title-ai">我怎么做</text>
+      <text class="section-desc">一个小步骤</text>
+      <text class="block-text" wx:if="{{ record.aiResult.whatToDoSegments && record.aiResult.whatToDoSegments.length }}">
+        <text wx:for="{{ record.aiResult.whatToDoSegments }}" wx:key="index" class="{{ item.type === 'highlight' ? 'block-text-highlight' : '' }}">{{ item.text }}</text>
+      </text>
+      <text class="block-text" wx:else>{{ record.aiResult.whatToDo }}</text>
+    </view>
+    <view class="section section-ai-pending" wx:if="{{ record.aiStatus === 'pending' }}">
+      <text class="hint-pending">AI 解读正在生成中，请稍候…</text>
+    </view>
+    <!-- 生成失败：提示 + 重试 -->
+    <view class="section section-ai-failed" wx:if="{{ record.aiStatus === 'failed' }}">
+      <text class="hint-failed">AI 解读生成失败</text>
+      <text class="hint-failed-detail" wx:if="{{ record.aiError }}">{{ record.aiError }}</text>
+      <button class="btn-retry" bindtap="retryAi">重试</button>
+    </view>
+    <!-- 暂无（旧记录或未请求过 AI） -->
+    <view class="section section-no-ai" wx:if="{{ !record.aiResult && record.aiStatus !== 'pending' && record.aiStatus !== 'failed' }}">
+      <text class="hint">暂无 AI 解读，可回到情绪页重新记下一条触发生成。</text>
+      <block wx:if="{{ cloudOk }}">
+        <text class="hint-sub">也可在此检测与「记下心情」相同的百炼联通链路（不写本条数据）。</text>
+        <button
+          class="btn-ai-link"
+          loading="{{ aiLinkTestBusy }}"
+          disabled="{{ aiLinkTestBusy || aiDryRunBusy }}"
+          bindtap="testAiLinkConnectivity"
+        >测试 AI 联通</button>
+        <button
+          class="btn-ai-link btn-ai-link--secondary"
+          loading="{{ aiDryRunBusy }}"
+          disabled="{{ aiLinkTestBusy || aiDryRunBusy }}"
+          bindtap="testDeepReflectDryRun"
+        >深度自检（完整解读）</button>
+      </block>
+    </view>
+  </block>
+  <view class="empty" wx:else>
+    <text class="empty-text">未找到该条记录</text>
+  </view>
+</view>

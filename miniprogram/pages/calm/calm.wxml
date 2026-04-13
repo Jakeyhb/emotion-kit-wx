@@ -1,0 +1,54 @@
+<view class="page {{ uiReady ? 'page--ready' : '' }}">
+  <view class="atmosphere">
+    <view class="atmosphere-blob atmosphere-blob--1" />
+    <view class="atmosphere-blob atmosphere-blob--2" />
+  </view>
+
+  <view class="intro card card--intro">
+    <view class="intro-kicker">调节</view>
+    <text class="title">4-4-6-2 呼吸节奏</text>
+    <text class="desc">纯本地计时，不联网。情绪波动时先做几轮，再回到「记录」写下感受。</text>
+  </view>
+
+  <view class="phase-track">
+    <view
+      wx:for="{{ phases }}"
+      wx:key="key"
+      class="phase-step {{ phaseIndex === index ? 'phase-step--active' : '' }} {{ phaseIndex > index ? 'phase-step--past' : '' }}"
+    >
+      <view class="phase-step-dot" />
+      <text class="phase-step-label">{{ item.label }}</text>
+      <text class="phase-step-sec">{{ item.sec }}s</text>
+    </view>
+  </view>
+
+  <view class="ring-wrap">
+    <view class="ring-shell {{ running ? 'ring-shell--running' : '' }}">
+      <view class="ring-orbit" />
+      <view class="ring-halo ring-halo--1" />
+      <view class="ring-halo ring-halo--2" />
+      <view class="ring ring--{{ phaseKey }} {{ running ? 'ring--active' : '' }}">
+        <view class="ring-inner-shine" />
+        <text class="ring-label">{{ phaseLabel }}</text>
+        <text class="ring-num">{{ remain }}</text>
+        <text class="ring-hint">{{ phaseHint }}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="stats" wx:if="{{ totalCycles > 0 }}">
+    <view class="stats-pill">
+      <text class="stats-num">{{ totalCycles }}</text>
+      <text class="stats-text">轮完整循环</text>
+    </view>
+  </view>
+
+  <view class="actions">
+    <button class="btn btn-primary {{ running ? 'btn-primary--pause' : '' }}" bindtap="toggle">
+      <text class="btn-label">{{ running ? '暂停' : '开始' }}</text>
+    </button>
+    <button class="btn btn-ghost" bindtap="reset">
+      <text class="btn-label">重置</text>
+    </button>
+  </view>
+</view>

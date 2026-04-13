@@ -1,0 +1,207 @@
+<view class="page">
+  <!-- 日历：默认按周显示，可切换月视图，点击日期查看该日记录 -->
+  <view class="section calendar-section">
+    <view class="calendar-header">
+      <view class="calendar-view-toggle" bindtap="switchCalendarView">
+        <text class="toggle-item {{ calendarView === 'week' ? 'active' : '' }}">周</text>
+        <text class="toggle-divider">/</text>
+        <text class="toggle-item {{ calendarView === 'month' ? 'active' : '' }}">月</text>
+      </view>
+      <text class="calendar-title">{{ calendarTitle }}</text>
+      <view class="calendar-nav">
+        <text class="calendar-nav-btn" bindtap="calendarPrev">‹</text>
+        <text class="calendar-nav-btn" bindtap="calendarNext">›</text>
+      </view>
+    </view>
+    <view class="calendar-weekdays">
+      <text class="weekday">一</text>
+      <text class="weekday">二</text>
+      <text class="weekday">三</text>
+      <text class="weekday">四</text>
+      <text class="weekday">五</text>
+      <text class="weekday">六</text>
+      <text class="weekday">日</text>
+    </view>
+    <!-- 周视图：一行 7 天 -->
+    <view class="calendar-grid week-grid" wx:if="{{ calendarView === 'week' }}">
+      <view
+        wx:for="{{ weekDays }}"
+        wx:key="date"
+        class="calendar-cell {{ item.isToday ? 'today' : '' }} {{ item.hasRecord ? 'has-record' : '' }} {{ selectedDate === item.date ? 'selected' : '' }}"
+        data-date="{{ item.date }}"
+        bindtap="onSelectDay"
+      >
+        <text class="cell-day">{{ item.dayNum }}</text>
+        <view wx:if="{{ item.hasRecord }}" class="cell-mood-dot" style="background-color: {{ item.moodColor }}"></view>
+      </view>
+    </view>
+    <!-- 月视图：6 行 × 7 列 -->
+    <view class="calendar-grid month-grid" wx:if="{{ calendarView === 'month' }}">
+      <view
+        wx:for="{{ monthGrid }}"
+        wx:key="*this"
+        wx:for-item="row"
+        class="calendar-row"
+      >
+        <view
+          wx:for="{{ row }}"
+          wx:for-item="cell"
+          wx:key="date"
+          class="calendar-cell {{ cell.isToday ? 'today' : '' }} {{ cell.hasRecord ? 'has-record' : '' }} {{ !cell.isCurrentMonth ? 'other-month' : '' }} {{ selectedDate === cell.date ? 'selected' : '' }}"
+          data-date="{{ cell.date }}"
+          bindtap="onSelectDay"
+        >
+          <text class="cell-day">{{ cell.dayNum }}</text>
+          <view wx:if="{{ cell.hasRecord }}" class="cell-mood-dot" style="background-color: {{ cell.moodColor }}"></view>
+        </view>
+      </view>
+    </view>
+    <view class="calendar-hint">点击某天，下方历史记录将显示该日记录</view>
+  </view>
+
+  <!-- 问题一：此刻主要有哪些情绪？（可多选） -->
+  <view class="section q-section">
+    <text class="q-title">1. 此刻主要有哪些情绪？</text>
+    <text class="q-hint">可多选，至少选一种</text>
+    <view class="emotion-grid">
+      <view
+        wx:for="{{ emotionList }}"
+        wx:key="name"
+        class="emotion-chip {{ item.selected ? 'selected' : '' }}"
+        style="--emotion-color: {{ item.color }}"
+        data-name="{{ item.name }}"
+        bindtap="onEmotionTap"
+      >
+        {{ item.name }}
+      </view>
+    </view>
+  </view>
+
+  <!-- 问题二：每种情绪的强度如何？左情绪、中间线段（颜色表强度）、右文案，与详情页一致 -->
+  <view class="section q-section">
+    <text class="q-title">2. 每种情绪的强度如何？</text>
+    <text class="q-hint" wx:if="{{ selectedEmotionsWithColor.length === 0 }}">请先在问题一中选择至少一种情绪</text>
+    <view class="degree-list" wx:if="{{ selectedEmotionsWithColor.length > 0 }}">
+      <view wx:for="{{ selectedEmotionsWithColor }}" wx:key="name" class="degree-row">
+        <text class="degree-name" style="color: {{ item.color }}">{{ item.name }}</text>
+        <view class="degree-line-wrap">
+          <view
+            wx:for="{{ degreeOptions }}"
+            wx:for-item="d"
+            wx:key="value"
+            class="degree-segment {{ item.degree === d.value ? 'active' : '' }}"
+            style="{{ item.degree === d.value ? 'background: ' + d.lineColor : '' }}"
+            data-name="{{ item.name }}"
+            data-degree="{{ d.value }}"
+            bindtap="onDegreeChange"
+          ></view>
+        </view>
+        <text class="degree-label">{{ item.degreeLabel }}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 问题三：情境/联想（可选） -->
+  <view class="section q-section">
+    <text class="q-title">3. 此刻脑海中浮现什么？</text>
+    <text class="q-hint">触发、身体感受或联想，可选填</text>
+    <textarea
+      class="q3-input"
+      placeholder="例如：刚才和谁说了什么、身体哪里紧、想到的画面…"
+      value="{{ question3 }}"
+      maxlength="300"
+      show-confirm-bar="{{ false }}"
+      bindinput="onQuestion3Input"
+    />
+  </view>
+
+  <!-- 主操作 -->
+  <view class="action-wrap">
+    <text class="action-hint">记下仅记录到今日</text>
+    <button class="btn-save" bindtap="saveRecord">记下</button>
+    <view wx:if="{{ todayRecord }}" class="today-done">
+      <text class="today-done-text">今天已记：{{ todayRecord.displaySummary || todayRecord.moodLabel }}</text>
+      <text class="today-done-sub" bindtap="clearSelection">再记一条</text>
+    </view>
+  </view>
+
+  <!-- 历史记录：未选日期显示全部，选了日期则显示该日记录 -->
+  <view class="section recent-section" wx:if="{{ recentList.length > 0 || selectedDate }}">
+    <view class="recent-section-header">
+      <text class="section-title">{{ selectedDate ? selectedDateLabel + ' 的片刻' : '过往片刻' }}</text>
+      <text class="section-desc" wx:if="{{ !selectedDate }}">每记下一条就是一条留痕，点开可看解读。</text>
+    </view>
+    <view class="recent-list" wx:if="{{ selectedDate ? selectedDateRecords.length > 0 : recentList.length > 0 }}">
+      <view
+        wx:for="{{ selectedDate ? selectedDateRecords : recentList }}"
+        wx:key="id"
+        class="recent-card"
+        style="--mood-color: {{ item.moodColor || '#7a9a8e' }}"
+        data-id="{{ item.id }}"
+        bindtap="goDetail"
+      >
+        <view class="recent-card-head">
+          <text class="recent-card-time">{{ item.displayTitle }}</text>
+          <view wx:if="{{ item.displaySummary }}" class="recent-card-mood" style="background-color: {{ item.moodColor || '#7a9a8e' }}">{{ item.displaySummary }}</view>
+        </view>
+        <view class="recent-card-tags" wx:if="{{ item.emotionsShort }}">
+          <text class="recent-card-tag">{{ item.emotionsShort }}</text>
+        </view>
+        <view
+          class="recent-card-do"
+          wx:if="{{ item.aiResult && (item.aiResult.whatToDo || item.aiResult.whatIsWrong) }}"
+        >
+          <text class="recent-card-do-text">{{ item.whatToDoOneLine || item.aiResult.whatToDo || item.aiResult.whatIsWrong }}</text>
+        </view>
+      </view>
+    </view>
+    <text class="selected-day-empty" wx:if="{{ selectedDate && selectedDateRecords.length === 0 }}">这一天还没有留下片刻</text>
+  </view>
+
+  <!-- 空状态：未选日期且无任何记录时显示 -->
+  <view class="empty-tip" wx:if="{{ recentList.length === 0 && !todayRecord && !selectedDate }}">
+    <text class="empty-text">选一个最接近此刻的感受，点「记下」，这里就会出现你的片刻。</text>
+  </view>
+
+  <!-- 我的背景：首次必填弹窗 / 小按钮打开的修改弹窗（固定背景用户不展示） -->
+  <view class="premise-modal-mask" wx:if="{{ !isFixedPremiseUser && (showPremiseIntro || showPremiseEdit) }}" catchtouchmove="preventMove">
+    <view class="premise-modal-box" catchtouchmove="preventMove">
+      <text class="premise-modal-title">{{ showPremiseIntro ? '请填写你的背景（必填）' : '修改我的背景' }}</text>
+      <text class="premise-modal-desc" wx:if="{{ showPremiseIntro }}">写一点自己的状况，AI 解读会更贴合你。</text>
+      <textarea
+        class="premise-modal-input"
+        placeholder="写一下自己的状况，让 AI 解读会更贴合你。"
+        value="{{ premiseModalValue }}"
+        maxlength="500"
+        show-confirm-bar="{{ false }}"
+        bindinput="onPremiseModalInput"
+      />
+      <view class="premise-modal-btns">
+        <block wx:if="{{ showPremiseIntro }}">
+          <button class="premise-btn-secondary" bindtap="skipPremiseIntro">暂不填写</button>
+          <button class="premise-btn-primary" bindtap="confirmPremiseIntro">确定</button>
+        </block>
+        <block wx:else>
+          <button class="premise-btn-secondary" bindtap="closePremiseEdit">取消</button>
+          <button class="premise-btn-primary" bindtap="savePremiseEdit">保存</button>
+        </block>
+      </view>
+    </view>
+  </view>
+
+  <!-- 回到顶部：滚动后显示，可爱悬浮 -->
+  <view class="back-top" wx:if="{{ showBackTop }}" bindtap="onBackTop">
+    <text class="back-top-icon">↑</text>
+    <text class="back-top-text">回顶</text>
+  </view>
+
+  <!-- 自定义提示：柔和俏皮 -->
+  <view class="custom-toast {{ showToast ? 'show' : '' }} toast-{{ toastType }}" wx:if="{{ showToast }}">
+    <view class="toast-content">
+      <view class="toast-badge toast-badge--success" wx:if="{{ toastType === 'success' }}">好</view>
+      <view class="toast-badge toast-badge--error" wx:elif="{{ toastType === 'error' }}">!</view>
+      <view class="toast-badge toast-badge--info" wx:else>注</view>
+      <text class="toast-text">{{ toastText }}</text>
+    </view>
+  </view>
+</view>

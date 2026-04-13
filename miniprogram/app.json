@@ -1,0 +1,58 @@
+{
+  "pages": [
+    "pages/mood/mood",
+    "pages/calm/calm",
+    "pages/mine/mine"
+  ],
+  "subpackages": [
+    {
+      "root": "packageDetail",
+      "pages": ["pages/mood-detail/mood-detail"]
+    }
+  ],
+  "tabBar": {
+    "color": "#7a908a",
+    "selectedColor": "#2d6a5f",
+    "backgroundColor": "#f2f7f5",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/mood/mood",
+        "text": "记录",
+        "iconPath": "images/icons/mood.png",
+        "selectedIconPath": "images/icons/mood-active.png"
+      },
+      {
+        "pagePath": "pages/calm/calm",
+        "text": "调节",
+        "iconPath": "images/icons/calm.png",
+        "selectedIconPath": "images/icons/calm-active.png"
+      },
+      {
+        "pagePath": "pages/mine/mine",
+        "text": "我的",
+        "iconPath": "images/icons/mine.png",
+        "selectedIconPath": "images/icons/mine-active.png"
+      }
+    ]
+  },
+  "window": {
+    "backgroundTextStyle": "dark",
+    "navigationBarBackgroundColor": "#eef4f1",
+    "navigationBarTitleText": "情绪手记",
+    "navigationBarTextStyle": "black"
+  },
+  "usingComponents": {
+    "van-button": "@vant/weapp/button/index",
+    "van-cell": "@vant/weapp/cell/index",
+    "van-cell-group": "@vant/weapp/cell-group/index",
+    "van-field": "@vant/weapp/field/index"
+  },
+  "style": "v2",
+  "networkTimeout": {
+    "request": 120000,
+    "downloadFile": 120000,
+    "uploadFile": 120000,
+    "connectSocket": 60000
+  }
+}

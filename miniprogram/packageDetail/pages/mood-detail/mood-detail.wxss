@@ -1,0 +1,292 @@
+/* 情绪详情页：与其余页面一致，继承 app 网格纸背景，模块用白底卡片 */
+.page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 40rpx 40rpx 100rpx;
+}
+
+.section {
+  background: var(--ek-surface);
+  border-radius: var(--ek-radius-block);
+  padding: 32rpx 36rpx;
+  margin-bottom: 28rpx;
+  box-shadow: var(--ek-shadow-card-sm);
+  border: 1rpx solid var(--ek-border);
+}
+
+/* 置顶「情境/联想」：略强调用户原话，对齐老版 emotion-detail */
+.section-situation {
+  border-color: var(--ek-primary-soft);
+  box-shadow: 0 8rpx 28rpx rgba(90, 130, 115, 0.08);
+}
+
+.section-situation .situation-title {
+  color: var(--ek-primary);
+  border-bottom-color: var(--ek-primary-soft);
+  margin-bottom: 20rpx;
+  padding-bottom: 14rpx;
+}
+
+.situation-body {
+  font-size: 30rpx;
+  color: var(--ek-text);
+  line-height: 1.75;
+  letter-spacing: 0.5rpx;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: block;
+}
+
+.section-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: var(--ek-text);
+  letter-spacing: 0.5rpx;
+  display: block;
+  margin-bottom: 24rpx;
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid var(--ek-border);
+}
+
+/* 我的数据 */
+.section-data .section-title {
+  color: var(--ek-text);
+}
+
+.data-row {
+  margin-bottom: 24rpx;
+}
+
+.data-row:last-child {
+  margin-bottom: 0;
+}
+
+.data-label {
+  font-size: 26rpx;
+  color: var(--ek-text-secondary);
+  display: block;
+  margin-bottom: 8rpx;
+}
+
+.data-value {
+  font-size: 28rpx;
+  color: var(--ek-text);
+  line-height: 1.55;
+  display: block;
+}
+
+.data-value.tags-value {
+  color: var(--ek-text-secondary);
+}
+
+/* 情绪及强度：左情绪、右强度，中间一条线 */
+.data-row-emotions .data-label {
+  margin-bottom: 16rpx;
+}
+.emotion-intensity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.emotion-intensity-row {
+  display: flex;
+  align-items: center;
+  min-height: 72rpx;
+  padding: 12rpx 0;
+  border-bottom: 1rpx solid var(--ek-border);
+}
+.emotion-intensity-row:last-child {
+  border-bottom: none;
+}
+.emotion-intensity-left {
+  flex-shrink: 0;
+  font-size: 28rpx;
+  font-weight: 600;
+  letter-spacing: 0.5rpx;
+  min-width: 120rpx;
+}
+.degree-line-wrap {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 6rpx;
+  min-height: 32rpx;
+  margin: 0 24rpx 0 20rpx;
+}
+.degree-segment {
+  flex: 1;
+  height: 6rpx;
+  border-radius: 3rpx;
+  background: rgba(0, 0, 0, 0.06);
+}
+.degree-segment.active {
+  height: 12rpx;
+  border-radius: 4rpx;
+}
+.emotion-intensity-right {
+  flex-shrink: 0;
+  font-size: 26rpx;
+  color: var(--ek-text-secondary);
+  font-weight: 500;
+}
+
+.data-row-note .data-value.note-value {
+  font-size: 28rpx;
+  line-height: 1.65;
+  color: var(--ek-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mood-tag {
+  display: inline-block;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  font-size: 26rpx;
+  color: #fff;
+  line-height: 1.3;
+}
+
+/* 我怎么了 / 我怎么做（对齐老项目 emotion-detail 的青绿标题） */
+.section-ai .section-title-ai {
+  color: var(--ek-primary);
+  border-bottom-color: var(--ek-primary-soft);
+}
+
+.section-ai .section-desc {
+  font-size: 26rpx;
+  color: var(--ek-text-secondary);
+  display: block;
+  margin-top: -12rpx;
+  margin-bottom: 16rpx;
+}
+
+.block-text {
+  font-size: 28rpx;
+  color: var(--ek-text);
+  line-height: 1.75;
+  display: block;
+  letter-spacing: 0.5rpx;
+}
+
+.block-text-highlight {
+  text-decoration: underline;
+  text-decoration-color: var(--ek-primary);
+  font-weight: 600;
+  color: var(--ek-text);
+  padding: 0 4rpx;
+  border-radius: 6rpx;
+  background: var(--ek-accent-soft);
+}
+
+/* AI 生成中 */
+.section-ai-pending {
+  text-align: center;
+  padding: 40rpx 36rpx;
+}
+
+.hint-pending {
+  font-size: 28rpx;
+  color: var(--ek-text-secondary);
+  line-height: 1.5;
+  display: block;
+}
+
+/* AI 生成失败 + 重试 */
+.section-ai-failed {
+  text-align: center;
+  padding: 36rpx 36rpx 32rpx;
+}
+
+.hint-failed {
+  font-size: 28rpx;
+  color: var(--ek-text);
+  font-weight: 600;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.hint-failed-detail {
+  font-size: 26rpx;
+  color: var(--ek-text-secondary);
+  line-height: 1.5;
+  display: block;
+  margin-bottom: 24rpx;
+}
+
+.btn-retry {
+  display: inline-block;
+  padding: 16rpx 40rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ek-primary);
+  border: none;
+  border-radius: var(--ek-radius-pill);
+  line-height: 1.3;
+  box-shadow: var(--ek-shadow-primary);
+}
+
+.btn-retry::after {
+  border: none;
+}
+
+/* 暂无 AI */
+.section-no-ai {
+  text-align: center;
+  padding: 40rpx 36rpx;
+}
+
+.section-no-ai .hint {
+  font-size: 28rpx;
+  color: var(--ek-text-secondary);
+  line-height: 1.5;
+  display: block;
+}
+
+.section-no-ai .hint-sub {
+  font-size: 24rpx;
+  color: var(--ek-text-hint);
+  line-height: 1.55;
+  display: block;
+  margin-top: 20rpx;
+  margin-bottom: 28rpx;
+}
+
+.btn-ai-link {
+  display: inline-block;
+  padding: 16rpx 40rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--ek-primary);
+  background: var(--ek-surface);
+  border: 2rpx solid var(--ek-primary);
+  border-radius: var(--ek-radius-pill);
+  line-height: 1.3;
+}
+
+.btn-ai-link::after {
+  border: none;
+}
+
+.btn-ai-link[disabled] {
+  opacity: 0.55;
+}
+
+.btn-ai-link--secondary {
+  margin-top: 20rpx;
+  color: var(--ek-text-secondary);
+  border-color: var(--ek-border);
+  font-weight: 500;
+}
+
+/* 空状态 */
+.empty {
+  padding: 100rpx 24rpx;
+  text-align: center;
+}
+
+.empty-text {
+  font-size: 28rpx;
+  color: var(--ek-text-hint);
+}
