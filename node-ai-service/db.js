@@ -97,34 +97,53 @@ async function queryLogs({
     params.push(new Date(to));
   }
   const whereSql = where.join(" AND ");
-  const [countRows] = await p.execute(
-    `SELECT COUNT(*) AS c FROM app_logs WHERE ${whereSql}`,
-    params
-  );
-  const total = countRows && countRows[0] ? Number(countRows[0].c) || 0 : 0;
-  const [rows] = await p.execute(
-    `SELECT id, openid, source, record_id, created_at, phase, level, meta_json FROM app_logs WHERE ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
-  );
-  const normalized = (rows || []).map((r) => {
-    let meta = r.meta_json;
-    if (meta != null && typeof meta === "string") {
-      try {
-        meta = JSON.parse(meta);
-      } catch (e) {}
+  try {
+    const [countRows] = await p.execute(
+      `SELECT COUNT(*) AS c FROM app_logs WHERE ${whereSql}`,
+      params
+    );
+    const total = countRows && countRows[0] ? Number(countRows[0].c) || 0 : 0;
+    const [rows] = await p.execute(
+      `SELECT id, openid, source, record_id, created_at, phase, level, meta_json FROM app_logs WHERE ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+    const normalized = (rows || []).map((r) => {
+      let meta = r.meta_json;
+      if (meta != null && typeof meta === "string") {
+        try {
+          meta = JSON.parse(meta);
+        } catch (e) {}
+      }
+      return {
+        id: r.id,
+        openid: r.openid != null ? String(r.openid) : "",
+        source: r.source != null ? String(r.source) : "",
+        record_id: r.record_id != null ? String(r.record_id) : "",
+        created_at: r.created_at,
+        phase: r.phase,
+        level: r.level,
+        meta_json: meta,
+      };
+    });
+    return { ok: true, mysql: true, rows: normalized, total, page, pageSize: limit };
+  } catch (e) {
+    const code = e && e.code;
+    const errno = e && e.errno;
+    if (code === "ER_BAD_FIELD_ERROR" || errno === 1054) {
+      return {
+        ok: false,
+        errMsg:
+          "数据库表 app_logs 缺少 openid/source/record_id 等列。请在 MySQL 中执行 node-ai-service/schema_migrate_app_logs_trace.sql（或按 schema.sql 新建库），然后重启 node-ai-service。",
+        mysql: true,
+        rows: [],
+        total: 0,
+        page: Math.max(Number(page) || 1, 1),
+        pageSize: limit,
+        schemaNeedsMigration: true,
+      };
     }
-    return {
-      id: r.id,
-      openid: r.openid != null ? String(r.openid) : "",
-      source: r.source != null ? String(r.source) : "",
-      record_id: r.record_id != null ? String(r.record_id) : "",
-      created_at: r.created_at,
-      phase: r.phase,
-      level: r.level,
-      meta_json: meta,
-    };
-  });
-  return { ok: true, mysql: true, rows: normalized, total, page, pageSize: limit };
+    throw e;
+  }
 }
 
 async function countAdmins() {

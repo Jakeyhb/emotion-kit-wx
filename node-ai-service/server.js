@@ -350,6 +350,14 @@ app.get("/api/logs", withAdminAuth, async (req, res) => {
   const source = req.query.source != null ? String(req.query.source) : "";
   try {
     const result = await db.queryLogs({ page, pageSize, phase, from, to, openid, source });
+    if (!result.ok) {
+      return res.status(503).json({
+        ok: false,
+        errMsg: result.errMsg || "查询日志失败",
+        mysql: result.mysql,
+        schemaNeedsMigration: !!result.schemaNeedsMigration,
+      });
+    }
     res.json({ ok: true, ...result });
   } catch (e) {
     const errMsg = (e && e.message) || String(e);
