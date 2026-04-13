@@ -1,5 +1,7 @@
 const express = require("express");
 const https = require("https");
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -12,6 +14,39 @@ const DASHSCOPE_API_HOST = String(process.env.DASHSCOPE_API_HOST || "dashscope.a
   .split("/")[0];
 const DASHSCOPE_MODEL = String(process.env.DASHSCOPE_MODEL || "qwen3-max").trim();
 const SERVICE_TOKEN = String(process.env.SERVICE_TOKEN || "").trim();
+/** 仅用于 /admin 日志页；未设置时与 SERVICE_TOKEN 相同 */
+const LOG_ADMIN_TOKEN = String(process.env.LOG_ADMIN_TOKEN || "").trim();
+const LOG_MAX_FILE_BYTES = Math.min(
+  Math.max(Number(process.env.LOG_MAX_FILE_BYTES) || 2 * 1024 * 1024, 256 * 1024),
+  10 * 1024 * 1024
+);
+const LOG_READ_MAX_LINES = Math.min(Math.max(Number(process.env.LOG_READ_MAX_LINES) || 500, 50), 10000);
+
+const LOG_DIR = path.join(__dirname, "logs");
+const APP_LOG_FILE = path.join(LOG_DIR, "app.log");
+
+function ensureLogDir() {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+  } catch (e) {}
+}
+
+function rotateLogIfNeeded() {
+  try {
+    if (!fs.existsSync(APP_LOG_FILE)) return;
+    const st = fs.statSync(APP_LOG_FILE);
+    if (st.size <= LOG_MAX_FILE_BYTES) return;
+    const backup = `${APP_LOG_FILE}.1`;
+    if (fs.existsSync(backup)) fs.unlinkSync(backup);
+    fs.renameSync(APP_LOG_FILE, backup);
+  } catch (e) {}
+}
+
+function appendFileLog(line) {
+  ensureLogDir();
+  rotateLogIfNeeded();
+  fs.appendFile(APP_LOG_FILE, `${line}\n`, () => {});
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -20,9 +55,12 @@ function nowIso() {
 function log(phase, meta) {
   const payload = { t: nowIso(), phase, ...(meta || {}) };
   try {
-    console.log("[node-ai-service]", JSON.stringify(payload));
+    const s = JSON.stringify(payload);
+    console.log("[node-ai-service]", s);
+    appendFileLog(s);
   } catch (e) {
     console.log("[node-ai-service]", phase, meta);
+    appendFileLog(JSON.stringify({ t: nowIso(), phase: "log_stringify_fail", err: String(e) }));
   }
 }
 
@@ -37,6 +75,52 @@ function withAuth(req, res, next) {
     return res.status(403).json({ ok: false, errMsg: "bad token" });
   }
   return next();
+}
+
+function adminToken() {
+  return LOG_ADMIN_TOKEN || SERVICE_TOKEN;
+}
+
+function withAdminAuth(req, res, next) {
+  const need = adminToken();
+  if (!need) {
+    return res.status(503).json({
+      ok: false,
+      errMsg: "未配置 SERVICE_TOKEN；请先设置 SERVICE_TOKEN 后再使用日志页",
+    });
+  }
+  const auth = String(req.headers.authorization || "");
+  if (!auth.startsWith("Bearer ")) {
+    return res.status(401).json({ ok: false, errMsg: "missing bearer token" });
+  }
+  const token = auth.slice("Bearer ".length).trim();
+  if (token !== need) {
+    return res.status(403).json({ ok: false, errMsg: "bad token" });
+  }
+  return next();
+}
+
+function readTailLines(filePath, maxLines) {
+  if (!fs.existsSync(filePath)) {
+    return { lines: [], truncated: false, totalBytes: 0 };
+  }
+  const stat = fs.statSync(filePath);
+  const totalBytes = stat.size;
+  const maxRead = Math.min(totalBytes, 1024 * 1024);
+  const fd = fs.openSync(filePath, "r");
+  const start = Math.max(0, totalBytes - maxRead);
+  const buf = Buffer.alloc(totalBytes - start);
+  fs.readSync(fd, buf, 0, buf.length, start);
+  fs.closeSync(fd);
+  let text = buf.toString("utf8");
+  const truncated = start > 0;
+  if (truncated && !text.startsWith("\n")) {
+    const firstNl = text.indexOf("\n");
+    if (firstNl !== -1) text = text.slice(firstNl + 1);
+  }
+  const allLines = text.split(/\r?\n/).filter((l) => l.length > 0);
+  const lines = allLines.length > maxLines ? allLines.slice(-maxLines) : allLines;
+  return { lines, truncated, totalBytes };
 }
 
 function dashscopeCompatibleChat({ model, messages, max_tokens, temperature, stream }) {
@@ -123,7 +207,108 @@ app.get("/healthz", (req, res) => {
     model: DASHSCOPE_MODEL,
     host: DASHSCOPE_API_HOST,
     authRequired: !!SERVICE_TOKEN,
+    adminLog: !!adminToken(),
   });
+});
+
+app.get("/admin/api/logs", withAdminAuth, (req, res) => {
+  const n = Math.min(
+    LOG_READ_MAX_LINES,
+    Math.max(50, parseInt(String(req.query.lines || "300"), 10) || 300)
+  );
+  const { lines, truncated, totalBytes } = readTailLines(APP_LOG_FILE, n);
+  res.json({
+    ok: true,
+    file: path.basename(APP_LOG_FILE),
+    lines,
+    lineCount: lines.length,
+    truncated,
+    totalBytes,
+    maxLines: n,
+  });
+});
+
+app.get("/admin", (req, res) => {
+  res.type("html").send(`<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>emotion-kit-ai 日志</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; background: #0f1419; color: #e6edf3; min-height: 100vh; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 1.15rem; font-weight: 600; margin: 0 0 8px; }
+  .sub { color: #8b949e; font-size: 0.85rem; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+  input[type="password"] { flex: 1; min-width: 200px; padding: 10px 12px; border: 1px solid #30363d; border-radius: 8px; background: #161b22; color: #e6edf3; }
+  button { padding: 10px 16px; border: 0; border-radius: 8px; background: #238636; color: #fff; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary { background: #21262d; color: #e6edf3; border: 1px solid #30363d; }
+  pre { margin: 0; padding: 14px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; font-size: 12px; line-height: 1.45; overflow: auto; max-height: 70vh; white-space: pre-wrap; word-break: break-all; }
+  .err { color: #f85149; margin-top: 8px; font-size: 0.9rem; }
+  .meta { color: #8b949e; font-size: 0.8rem; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>emotion-kit-ai 日志</h1>
+  <p class="sub">使用与接口相同的 Bearer Token（默认即 SERVICE_TOKEN；也可单独设置 LOG_ADMIN_TOKEN）。仅建议在 HTTPS 或内网使用。</p>
+  <div class="row">
+    <input id="tok" type="password" placeholder="粘贴 SERVICE_TOKEN 或 LOG_ADMIN_TOKEN" autocomplete="off"/>
+    <button type="button" id="save">保存到本地</button>
+    <button type="button" id="go" class="secondary">拉取日志</button>
+  </div>
+  <div class="row">
+    <label style="color:#8b949e;font-size:0.85rem">行数</label>
+    <input id="lines" type="number" min="50" max="10000" value="300" style="width:100px;padding:8px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3"/>
+  </div>
+  <div id="meta" class="meta"></div>
+  <div id="err" class="err"></div>
+  <pre id="out">（先输入 Token 并点击「拉取日志」）</pre>
+</div>
+<script>
+(function(){
+  var KEY = 'emotion_kit_ai_admin_token';
+  var tok = document.getElementById('tok');
+  var out = document.getElementById('out');
+  var err = document.getElementById('err');
+  var meta = document.getElementById('meta');
+  var linesEl = document.getElementById('lines');
+  try { var s = localStorage.getItem(KEY); if (s) tok.value = s; } catch(e) {}
+  document.getElementById('save').onclick = function(){
+    try { localStorage.setItem(KEY, tok.value.trim()); err.textContent = '已保存'; } catch(e) { err.textContent = '无法保存: ' + e; }
+  };
+  document.getElementById('go').onclick = function(){
+    err.textContent = '';
+    meta.textContent = '';
+    var t = tok.value.trim();
+    if (!t) { err.textContent = '请先填写 Token'; return; }
+    var n = parseInt(linesEl.value, 10) || 300;
+    out.textContent = '加载中…';
+    fetch('/admin/api/logs?lines=' + encodeURIComponent(n), {
+      headers: { 'Authorization': 'Bearer ' + t }
+    }).then(function(r){
+      return r.json().then(function(j){ return { ok: r.ok, status: r.status, j: j }; });
+    }).then(function(x){
+      if (!x.ok || !x.j || !x.j.ok) {
+        var msg = (x.j && x.j.errMsg) ? x.j.errMsg : ('HTTP ' + x.status);
+        err.textContent = msg;
+        out.textContent = '';
+        return;
+      }
+      meta.textContent = '文件: ' + (x.j.file || '') + ' · 行数: ' + x.j.lineCount + (x.j.truncated ? ' · 仅显示文件末尾（已截断）' : '');
+      out.textContent = (x.j.lines || []).join(String.fromCharCode(10));
+    }).catch(function(e){
+      err.textContent = String(e.message || e);
+      out.textContent = '';
+    });
+  };
+})();
+</script>
+</body>
+</html>`);
 });
 
 app.post("/ai/reflect", withAuth, async (req, res) => {
@@ -133,6 +318,11 @@ app.post("/ai/reflect", withAuth, async (req, res) => {
   if (task !== "chat") {
     return res.status(400).json({ ok: false, errMsg: "unsupported task, only chat is allowed" });
   }
+  log("reflect_request", {
+    msgCount: Array.isArray(body.messages) ? body.messages.length : 0,
+    max_tokens: body.max_tokens,
+    model: body.model || "",
+  });
   try {
     const result = await dashscopeCompatibleChat({
       model: body.model,
@@ -164,10 +354,13 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
+  ensureLogDir();
   log("server_start", {
     port: PORT,
     host: DASHSCOPE_API_HOST,
     model: DASHSCOPE_MODEL,
     authRequired: !!SERVICE_TOKEN,
+    adminLog: !!adminToken(),
+    logFile: APP_LOG_FILE,
   });
 });

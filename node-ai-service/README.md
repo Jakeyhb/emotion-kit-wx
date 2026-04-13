@@ -10,6 +10,13 @@ And one health endpoint:
 
 - `GET /healthz`
 
+Log viewer (same Bearer token as API, default `SERVICE_TOKEN`):
+
+- `GET /admin` — simple HTML page to browse `logs/app.log` tail
+- `GET /admin/api/logs?lines=300` — JSON tail lines (requires `Authorization: Bearer …`)
+
+Optional env: `LOG_ADMIN_TOKEN` (if set, only this token can open `/admin`; API `/ai/reflect` still uses `SERVICE_TOKEN`).
+
 ## 1) Install and run
 
 ```bash
