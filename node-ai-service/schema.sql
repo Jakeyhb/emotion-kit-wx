@@ -4,13 +4,18 @@
 
 CREATE TABLE IF NOT EXISTS app_logs (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  openid VARCHAR(64) NOT NULL DEFAULT '',
+  source VARCHAR(32) NOT NULL DEFAULT '',
+  record_id VARCHAR(128) NOT NULL DEFAULT '',
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   phase VARCHAR(128) NOT NULL DEFAULT '',
   level VARCHAR(16) NOT NULL DEFAULT 'info',
   meta_json JSON NULL,
   PRIMARY KEY (id),
   KEY idx_created_at (created_at),
-  KEY idx_phase (phase)
+  KEY idx_phase (phase),
+  KEY idx_openid (openid),
+  KEY idx_source (source)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 管理后台账号（登录 /log-admin，JWT）

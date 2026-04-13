@@ -314,6 +314,7 @@ function parseNodeChatResponse(json) {
 
 async function callReflectChat(params) {
   const provider = pickProviderForRequest();
+  const ctx = params.context || {};
   if (provider === "node") {
     const json = await callNodeAiService("chat", {
       model: params.model,
@@ -321,6 +322,15 @@ async function callReflectChat(params) {
       max_tokens: params.max_tokens != null ? params.max_tokens : 512,
       temperature: params.temperature != null ? params.temperature : 0.7,
       stream: false,
+      openid: String(ctx.openid != null ? ctx.openid : "")
+        .trim()
+        .slice(0, 64),
+      source: String(ctx.source != null ? ctx.source : "")
+        .trim()
+        .slice(0, 32),
+      recordId: String(ctx.recordId != null ? ctx.recordId : "")
+        .trim()
+        .slice(0, 128),
     });
     const parsed = parseNodeChatResponse(json);
     if (!String(parsed.content || "").trim()) {
@@ -331,7 +341,8 @@ async function callReflectChat(params) {
   return callBailianChat(params);
 }
 
-function callDashScopePingOnce() {
+function callDashScopePingOnce(ctx = {}) {
+  const openid = ctx && ctx.openid != null ? String(ctx.openid).trim() : "";
   return callReflectChat({
     model: LEGACY_PROJECT_EMOTION_MODEL,
     messages: [
@@ -340,6 +351,7 @@ function callDashScopePingOnce() {
     ],
     max_tokens: 8,
     temperature: 0,
+    context: { openid, source: "test", recordId: "" },
   }).then((r) => String(r.content || "").trim());
 }
 
@@ -468,7 +480,7 @@ function buildReflectSystemPrompt(effectivePremise) {
 /**
  * 百炼调用 + 解析；不写库。供正式解读、dryRun、emotionReflectWorker 直连接口共用。
  */
-async function runReflectInterpretationCore(db, openid, { emotions, question3, premise }) {
+async function runReflectInterpretationCore(db, openid, { emotions, question3, premise, source, recordId }) {
   const tInterpret = Date.now();
   let effectivePremise = premise && String(premise).trim() ? String(premise).trim() : "";
   if (!effectivePremise) {
@@ -507,11 +519,21 @@ async function runReflectInterpretationCore(db, openid, { emotions, question3, p
     hasPremise: !!effectivePremise,
   });
 
+  const src =
+    source != null && String(source).trim()
+      ? String(source).trim().slice(0, 32)
+      : "emotion";
+  const rid = recordId != null ? String(recordId).trim().slice(0, 128) : "";
   const { content } = await callReflectChat({
     messages,
     model: LEGACY_PROJECT_EMOTION_MODEL,
     max_tokens: 960,
     temperature: 0.55,
+    context: {
+      openid: openid || "",
+      source: src,
+      recordId: rid,
+    },
   });
   let { whatIsWrong, whatToDo } = parseEmotionReflect(content);
   whatIsWrong = compactAiParagraph(whatIsWrong);
@@ -607,6 +629,8 @@ async function processReflectJob(db, jobId, options = {}) {
         emotions,
         question3,
         premise: p.premise,
+        source: "origin",
+        recordId: "",
       });
       await db.collection(REFLECT_JOBS_COLLECTION).doc(id).update({
         data: { status: "done", result: data, updatedAt: new Date() },
@@ -623,6 +647,8 @@ async function processReflectJob(db, jobId, options = {}) {
         emotions: p.emotions,
         question3: p.question3,
         premise: p.premise,
+        source: "emotion",
+        recordId: recordKey,
       });
       const col = db.collection(EMOTION_COLLECTION);
       const _ = db.command;

@@ -19,6 +19,9 @@ const { Header, Content } = Layout;
 
 type LogRow = {
   id: number;
+  openid: string;
+  source: string;
+  record_id: string;
   created_at: string;
   phase: string;
   level: string;
@@ -48,6 +51,8 @@ export default function LogsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [phase, setPhase] = useState("");
+  const [openid, setOpenid] = useState("");
+  const [source, setSource] = useState("");
   const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [rows, setRows] = useState<LogRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -67,6 +72,8 @@ export default function LogsPage() {
       q.set("page", String(page));
       q.set("pageSize", String(pageSize));
       if (phase.trim()) q.set("phase", phase.trim());
+      if (openid.trim()) q.set("openid", openid.trim());
+      if (source.trim()) q.set("source", source.trim());
       if (range && range[0]) q.set("from", range[0].toISOString());
       if (range && range[1]) q.set("to", range[1].toISOString());
       const r = await fetch(`/api/logs?${q.toString()}`, {
@@ -87,7 +94,7 @@ export default function LogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, phase, range, nav]);
+  }, [page, pageSize, phase, openid, source, range, nav]);
 
   const loadRef = useRef(load);
   loadRef.current = load;
@@ -114,6 +121,31 @@ export default function LogsPage() {
 
   const columns: ColumnsType<LogRow> = [
     { title: "id", dataIndex: "id", width: 90, fixed: "left" },
+    {
+      title: "openid",
+      dataIndex: "openid",
+      width: 200,
+      ellipsis: true,
+      render: (v) => (v != null ? String(v) : ""),
+    },
+    {
+      title: "source",
+      dataIndex: "source",
+      width: 100,
+      render: (v) => {
+        const s = v != null ? String(v) : "";
+        const color =
+          s === "emotion" ? "green" : s === "origin" ? "purple" : s === "test" ? "orange" : "default";
+        return <Tag color={color}>{s || "—"}</Tag>;
+      },
+    },
+    {
+      title: "record_id",
+      dataIndex: "record_id",
+      width: 140,
+      ellipsis: true,
+      render: (v) => (v != null ? String(v) : ""),
+    },
     {
       title: "时间",
       dataIndex: "created_at",
@@ -179,6 +211,20 @@ export default function LogsPage() {
             style={{ width: 200 }}
             allowClear
           />
+          <Input
+            placeholder="openid 精确"
+            value={openid}
+            onChange={(e) => setOpenid(e.target.value)}
+            style={{ width: 220 }}
+            allowClear
+          />
+          <Input
+            placeholder="source（emotion/origin/test）"
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            style={{ width: 200 }}
+            allowClear
+          />
           <DatePicker.RangePicker
             showTime
             value={range}
@@ -193,7 +239,7 @@ export default function LogsPage() {
           loading={loading}
           columns={columns}
           dataSource={rows}
-          scroll={{ x: 1100 }}
+          scroll={{ x: 1500 }}
           pagination={{
             current: page,
             pageSize,

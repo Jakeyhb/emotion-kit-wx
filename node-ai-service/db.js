@@ -29,11 +29,14 @@ function getPool() {
 /**
  * 异步插入一条日志（不阻塞主流程）
  */
-function insertLogRow({ phase, level, meta_json, created_at }) {
+function insertLogRow({ phase, level, meta_json, created_at, openid, source, record_id }) {
   const p = getPool();
   if (!p) return Promise.resolve();
   const ph = String(phase || "").slice(0, 128);
   const lv = String(level || "info").slice(0, 16);
+  const oid = String(openid || "").slice(0, 64);
+  const src = String(source || "").slice(0, 32);
+  const rid = String(record_id != null ? record_id : "").slice(0, 128);
   let metaStr = null;
   try {
     metaStr =
@@ -44,12 +47,10 @@ function insertLogRow({ phase, level, meta_json, created_at }) {
     metaStr = JSON.stringify({ err: "meta serialize fail" });
   }
   const t = created_at instanceof Date ? created_at : new Date(created_at || Date.now());
-  return p.execute("INSERT INTO app_logs (phase, level, meta_json, created_at) VALUES (?, ?, ?, ?)", [
-    ph,
-    lv,
-    metaStr,
-    t,
-  ])
+  return p.execute(
+    "INSERT INTO app_logs (openid, source, record_id, created_at, phase, level, meta_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [oid, src, rid, t, ph, lv, metaStr]
+  )
     .catch((err) => {
       console.error("[node-ai-service] mysql insertLogRow", err && err.message ? err.message : err);
     });
@@ -64,6 +65,8 @@ async function queryLogs({
   phase = "",
   from = null,
   to = null,
+  openid = "",
+  source = "",
 }) {
   const p = getPool();
   if (!p) {
@@ -76,6 +79,14 @@ async function queryLogs({
   if (phase && String(phase).trim()) {
     where.push("phase LIKE ?");
     params.push(`%${String(phase).trim().slice(0, 128)}%`);
+  }
+  if (openid && String(openid).trim()) {
+    where.push("openid = ?");
+    params.push(String(openid).trim().slice(0, 64));
+  }
+  if (source && String(source).trim()) {
+    where.push("source = ?");
+    params.push(String(source).trim().slice(0, 32));
   }
   if (from) {
     where.push("created_at >= ?");
@@ -92,7 +103,7 @@ async function queryLogs({
   );
   const total = countRows && countRows[0] ? Number(countRows[0].c) || 0 : 0;
   const [rows] = await p.execute(
-    `SELECT id, created_at, phase, level, meta_json FROM app_logs WHERE ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`,
+    `SELECT id, openid, source, record_id, created_at, phase, level, meta_json FROM app_logs WHERE ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`,
     [...params, limit, offset]
   );
   const normalized = (rows || []).map((r) => {
@@ -104,6 +115,9 @@ async function queryLogs({
     }
     return {
       id: r.id,
+      openid: r.openid != null ? String(r.openid) : "",
+      source: r.source != null ? String(r.source) : "",
+      record_id: r.record_id != null ? String(r.record_id) : "",
       created_at: r.created_at,
       phase: r.phase,
       level: r.level,

@@ -65,8 +65,14 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function log(phase, meta) {
+function log(phase, meta, trace) {
   const payload = { t: nowIso(), phase, ...(meta || {}) };
+  const tr = trace && typeof trace === "object" ? trace : {};
+  const openid = String(tr.openid != null ? tr.openid : "").slice(0, 64);
+  const source = String(tr.source != null ? tr.source : "").slice(0, 32);
+  const record_id = String(
+    tr.record_id != null ? tr.record_id : tr.recordId != null ? tr.recordId : ""
+  ).slice(0, 128);
   try {
     const s = JSON.stringify(payload);
     console.log("[node-ai-service]", s);
@@ -76,6 +82,9 @@ function log(phase, meta) {
       level: "info",
       meta_json: payload,
       created_at: new Date(payload.t),
+      openid,
+      source,
+      record_id,
     });
   } catch (e) {
     console.log("[node-ai-service]", phase, meta);
@@ -172,7 +181,7 @@ function readTailLines(filePath, maxLines) {
   return { lines, truncated, totalBytes };
 }
 
-function dashscopeCompatibleChat({ model, messages, max_tokens, temperature, stream }) {
+function dashscopeCompatibleChat({ model, messages, max_tokens, temperature, stream, trace }) {
   if (!DASHSCOPE_API_KEY) {
     return Promise.reject(new Error("server missing DASHSCOPE_API_KEY"));
   }
@@ -226,12 +235,16 @@ function dashscopeCompatibleChat({ model, messages, max_tokens, temperature, str
             const reasoning = msgObj.reasoning_content || msgObj.reasoning;
             if (reasoning) content = String(reasoning);
           }
-          log("dashscope_done", {
-            msTotal: Date.now() - t0,
-            status,
-            contentChars: content.length,
-            model: json.model || model || DASHSCOPE_MODEL,
-          });
+          log(
+            "dashscope_done",
+            {
+              msTotal: Date.now() - t0,
+              status,
+              contentChars: content.length,
+              model: json.model || model || DASHSCOPE_MODEL,
+            },
+            trace
+          );
           return resolve({ content, usage: json.usage, model: json.model || model || DASHSCOPE_MODEL });
         });
       }
@@ -314,8 +327,10 @@ app.get("/api/logs", withAdminAuth, async (req, res) => {
   const phase = req.query.phase != null ? String(req.query.phase) : "";
   const from = req.query.from || null;
   const to = req.query.to || null;
+  const openid = req.query.openid != null ? String(req.query.openid) : "";
+  const source = req.query.source != null ? String(req.query.source) : "";
   try {
-    const result = await db.queryLogs({ page, pageSize, phase, from, to });
+    const result = await db.queryLogs({ page, pageSize, phase, from, to, openid, source });
     res.json({ ok: true, ...result });
   } catch (e) {
     const errMsg = (e && e.message) || String(e);
@@ -441,11 +456,22 @@ app.post("/ai/reflect", withAuth, async (req, res) => {
   if (task !== "chat") {
     return res.status(400).json({ ok: false, errMsg: "unsupported task, only chat is allowed" });
   }
-  log("reflect_request", {
-    msgCount: Array.isArray(body.messages) ? body.messages.length : 0,
-    max_tokens: body.max_tokens,
-    model: body.model || "",
-  });
+  const openid = String(body.openid || "").trim().slice(0, 64);
+  const source = String(body.source || "").trim().slice(0, 32);
+  const recordId = String(body.recordId || "").trim().slice(0, 128);
+  const trace = { openid, source, record_id: recordId };
+  log(
+    "reflect_request",
+    {
+      msgCount: Array.isArray(body.messages) ? body.messages.length : 0,
+      max_tokens: body.max_tokens,
+      model: body.model || "",
+      openid: openid || undefined,
+      source: source || undefined,
+      recordId: recordId || undefined,
+    },
+    trace
+  );
   try {
     const result = await dashscopeCompatibleChat({
       model: body.model,
@@ -453,6 +479,7 @@ app.post("/ai/reflect", withAuth, async (req, res) => {
       max_tokens: body.max_tokens,
       temperature: body.temperature,
       stream: body.stream,
+      trace,
     });
     return res.json({
       ok: true,
@@ -465,7 +492,7 @@ app.post("/ai/reflect", withAuth, async (req, res) => {
     });
   } catch (e) {
     const errMsg = (e && e.message) || String(e);
-    log("reflect_error", { ms: Date.now() - t0, errMsg });
+    log("reflect_error", { ms: Date.now() - t0, errMsg }, trace);
     return res.status(502).json({ ok: false, errMsg });
   }
 });

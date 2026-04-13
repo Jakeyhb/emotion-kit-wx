@@ -30,7 +30,7 @@ async function runDashScopePingJob(pingId, openid) {
   }
   const t0 = Date.now();
   try {
-    const text = await callDashScopePingOnce();
+    const text = await callDashScopePingOnce({ openid });
     const msElapsed = Date.now() - t0;
     await col.doc(pingId).update({
       data: {
@@ -109,6 +109,8 @@ exports.main = async (event) => {
         emotions,
         question3,
         premise: event.premise,
+        source: "origin",
+        recordId: "",
       });
       return { ok: true, dryRun: true, data };
     } catch (e) {
@@ -143,6 +145,8 @@ exports.main = async (event) => {
       emotions,
       question3,
       premise,
+      source: "emotion",
+      recordId: recordKey,
     });
     const upd = await col.where({ openid, id: recordKey }).update({
       data: {
