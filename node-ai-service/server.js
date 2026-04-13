@@ -2,6 +2,8 @@ const express = require("express");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 const db = require("./db");
 
 const app = express();
@@ -98,23 +100,53 @@ function adminToken() {
   return LOG_ADMIN_TOKEN || SERVICE_TOKEN;
 }
 
+/** JWT 密钥：优先 ADMIN_JWT_SECRET，否则用 SERVICE_TOKEN，再否则固定盐（仅兜底） */
+function adminJwtSecret() {
+  const s = String(process.env.ADMIN_JWT_SECRET || SERVICE_TOKEN || "").trim();
+  if (s.length >= 16) return s;
+  return `${SERVICE_TOKEN || "emotion-kit"}_admin_jwt_v1`;
+}
+
 function withAdminAuth(req, res, next) {
-  const need = adminToken();
-  if (!need) {
-    return res.status(503).json({
-      ok: false,
-      errMsg: "未配置 SERVICE_TOKEN；请先设置 SERVICE_TOKEN 后再使用日志页",
-    });
-  }
   const auth = String(req.headers.authorization || "");
   if (!auth.startsWith("Bearer ")) {
     return res.status(401).json({ ok: false, errMsg: "missing bearer token" });
   }
   const token = auth.slice("Bearer ".length).trim();
+  try {
+    const decoded = jwt.verify(token, adminJwtSecret());
+    if (decoded && decoded.role === "super_admin") {
+      req.adminUser = decoded;
+      return next();
+    }
+  } catch (e) {
+    /* 非 JWT，走下方静态 Token */
+  }
+  const need = adminToken();
+  if (!need) {
+    return res.status(503).json({
+      ok: false,
+      errMsg:
+        "未配置后台认证：请使用管理员账号登录（需 MySQL），或设置 SERVICE_TOKEN / LOG_ADMIN_TOKEN",
+    });
+  }
   if (token !== need) {
     return res.status(403).json({ ok: false, errMsg: "bad token" });
   }
   return next();
+}
+
+async function ensureDefaultAdmin() {
+  if (!db.mysqlEnabled()) return;
+  if (String(process.env.ADMIN_BOOTSTRAP || "0") !== "1") return;
+  const cnt = await db.countAdmins();
+  if (cnt > 0) return;
+  const hash = bcrypt.hashSync("admin", 10);
+  await db.insertAdmin({ username: "admin", password_hash: hash, role: "super_admin" });
+  log("admin_bootstrap", {
+    username: "admin",
+    note: "默认密码 admin；请尽快修改密码并移除环境变量 ADMIN_BOOTSTRAP=1",
+  });
 }
 
 function readTailLines(filePath, maxLines) {
@@ -226,7 +258,41 @@ app.get("/healthz", (req, res) => {
     authRequired: !!SERVICE_TOKEN,
     adminLog: !!adminToken(),
     mysql: db.mysqlEnabled(),
+    adminLogin: db.mysqlEnabled(),
   });
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  const t0 = Date.now();
+  try {
+    if (!db.mysqlEnabled()) {
+      return res.status(503).json({ ok: false, errMsg: "MySQL 未配置，无法使用账号登录" });
+    }
+    const { username, password } = req.body || {};
+    const u = String(username || "").trim();
+    const p = String(password || "");
+    if (!u || !p) {
+      return res.status(400).json({ ok: false, errMsg: "用户名或密码为空" });
+    }
+    const row = await db.findAdminByUsername(u);
+    if (!row || !bcrypt.compareSync(p, row.password_hash)) {
+      return res.status(401).json({ ok: false, errMsg: "用户名或密码错误" });
+    }
+    const token = jwt.sign(
+      { sub: row.id, username: row.username, role: row.role },
+      adminJwtSecret(),
+      { expiresIn: "7d" }
+    );
+    log("admin_login", { username: row.username, role: row.role, ms: Date.now() - t0 });
+    res.json({
+      ok: true,
+      token,
+      user: { username: row.username, role: row.role },
+    });
+  } catch (e) {
+    const errMsg = (e && e.message) || String(e);
+    res.status(500).json({ ok: false, errMsg });
+  }
 });
 
 app.get("/api/logs/meta", withAdminAuth, (req, res) => {
@@ -277,6 +343,9 @@ app.get("/admin/api/logs", withAdminAuth, (req, res) => {
 if (fs.existsSync(path.join(REACT_ADMIN_DIR, "index.html"))) {
   app.use("/log-admin", express.static(REACT_ADMIN_DIR));
   app.get("/log-admin", (req, res) => res.redirect(302, "/log-admin/"));
+  app.get("/log-admin/login", (req, res) => {
+    res.sendFile(path.join(REACT_ADMIN_DIR, "index.html"));
+  });
 }
 
 app.get("/admin", (req, res) => {
@@ -407,7 +476,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ ok: false, errMsg });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   ensureLogDir();
   log("server_start", {
     port: PORT,
@@ -418,5 +487,11 @@ app.listen(PORT, () => {
     logFile: APP_LOG_FILE,
     mysql: db.mysqlEnabled(),
     reactAdmin: fs.existsSync(path.join(REACT_ADMIN_DIR, "index.html")),
+    adminBootstrap: String(process.env.ADMIN_BOOTSTRAP || "0") === "1",
   });
+  try {
+    await ensureDefaultAdmin();
+  } catch (e) {
+    console.error("[node-ai-service] ensureDefaultAdmin", e && e.message ? e.message : e);
+  }
 });

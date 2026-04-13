@@ -113,9 +113,40 @@ async function queryLogs({
   return { ok: true, mysql: true, rows: normalized, total, page, pageSize: limit };
 }
 
+async function countAdmins() {
+  const p = getPool();
+  if (!p) return 0;
+  const [rows] = await p.execute("SELECT COUNT(*) AS c FROM admin_users");
+  return rows && rows[0] ? Number(rows[0].c) || 0 : 0;
+}
+
+async function findAdminByUsername(username) {
+  const p = getPool();
+  if (!p) return null;
+  const u = String(username || "").trim().slice(0, 64);
+  if (!u) return null;
+  const [rows] = await p.execute(
+    "SELECT id, username, password_hash, role FROM admin_users WHERE username = ? LIMIT 1",
+    [u]
+  );
+  return rows && rows[0] ? rows[0] : null;
+}
+
+async function insertAdmin({ username, password_hash, role }) {
+  const p = getPool();
+  if (!p) throw new Error("mysql not configured");
+  const u = String(username || "").trim().slice(0, 64);
+  const h = String(password_hash || "");
+  const r = String(role || "super_admin").slice(0, 32);
+  await p.execute("INSERT INTO admin_users (username, password_hash, role) VALUES (?, ?, ?)", [u, h, r]);
+}
+
 module.exports = {
   mysqlEnabled,
   getPool,
   insertLogRow,
   queryLogs,
+  countAdmins,
+  findAdminByUsername,
+  insertAdmin,
 };
