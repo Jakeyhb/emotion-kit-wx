@@ -2,7 +2,7 @@ const PREMISE_STORAGE_KEY = 'kit_user_premise';
 const AVATAR_STORAGE_KEY = 'kit_user_avatar';
 const NICK_STORAGE_KEY = 'kit_user_nickname';
 const { envList } = require('../../envList');
-const { CLOUD_AI_CLIENT_WALL_MS } = require('../../utils/cloudAi');
+const { DRY_RUN_FULL_UI_WALL_MS } = require('../../utils/cloudAi');
 const { runDashScopeConnectionTest, runEmotionReflectDryRun } = require('../../utils/dashScopeConnectionTest');
 const {
   getUserProfileFromCloud,
@@ -185,7 +185,7 @@ Page({
       clearInterval(loadingTickId);
       if (watchdog != null) clearTimeout(watchdog);
     };
-    const watchdogMs = CLOUD_AI_CLIENT_WALL_MS + 20000;
+    const watchdogMs = DRY_RUN_FULL_UI_WALL_MS;
     watchdog = setTimeout(() => {
       if (uiSettled) return;
       uiSettled = true;

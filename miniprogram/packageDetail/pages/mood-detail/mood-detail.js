@@ -2,7 +2,7 @@ const STORAGE_KEY = 'kitMoodRecords';
 const toast = require('../../../utils/toast');
 const { pollEmotionAiFromCloud } = require('../../../utils/pollCloudAi');
 const {
-  CLOUD_AI_CLIENT_WALL_MS,
+  DRY_RUN_FULL_UI_WALL_MS,
   CLOUD_AI_POLL_MAX_MS,
   isCloudInvokeTimeout,
   runReflectJobViaClient
@@ -12,8 +12,8 @@ const { runDashScopeConnectionTest, runEmotionReflectDryRun } = require('../../.
 const CLOUD_DEFAULT_TIMEOUT_MS = 60000;
 const PENDING_STALE_MS = 90 * 1000;
 const DEBUG_RUN_ID = 'dryrun-debug';
-/** 与「我的」页深度自检一致：须长于 cloudAi 内层墙钟，避免先弹「等待过久」而任务仍在跑 */
-const DRY_RUN_UI_WALL_MS = CLOUD_AI_CLIENT_WALL_MS + 20000;
+/** 与「我的」页深度自检、dashScopeConnectionTest 单步+整链回退一致，避免 loading 比实际逻辑还短 */
+const DRY_RUN_UI_WALL_MS = DRY_RUN_FULL_UI_WALL_MS;
 
 function emitDebugLog(hypothesisId, location, message, data) {
   // #region agent log
@@ -472,7 +472,7 @@ Page({
       hasCloud: !!wx.cloud,
       aiDryRunBusy: !!this.data.aiDryRunBusy,
       aiLinkTestBusy: !!this.data.aiLinkTestBusy,
-      wallMs: CLOUD_AI_CLIENT_WALL_MS
+      wallMs: DRY_RUN_FULL_UI_WALL_MS
     });
     if (!wx.cloud || this.data.aiDryRunBusy || this.data.aiLinkTestBusy) return;
     this.setData({ aiDryRunBusy: true });

@@ -5,11 +5,14 @@
  * @returns {Promise<{ ok: boolean, title: string, content: string }>}
  */
 const {
-  CLOUD_AI_POLL_MAX_MS,
   CLOUD_CALL_FUNCTION_MAX_MS,
+  CLOUD_AI_POLL_MAX_MS,
+  DRY_RUN_PER_CALL_WALL_MS,
   isCloudInvokeTimeout,
-  runReflectJobViaClient
+  runReflectJobViaClient,
+  withTimeout
 } = require('./cloudAi');
+const { envList } = require('../envList');
 const DEBUG_RUN_ID = 'dryrun-debug';
 
 function emitDebugLog(hypothesisId, location, message, data) {
@@ -57,6 +60,14 @@ function emitDebugLog(hypothesisId, location, message, data) {
 
 const CF_QUICK = { name: 'quickstartFunctions', timeout: 20000 };
 const CF_WORKER = { name: 'emotionReflectWorker', slow: true, timeout: CLOUD_CALL_FUNCTION_MAX_MS };
+const CF_QS_SLOW = { name: 'quickstartFunctions', slow: true, timeout: CLOUD_CALL_FUNCTION_MAX_MS };
+
+function withCloudEnv(base) {
+  const o = { ...base };
+  const envId = envList && envList[0];
+  if (envId) o.config = { ...(o.config || {}), env: envId };
+  return o;
+}
 
 /** 成功弹窗补充说明：检测请求刻意要模型只回一字，避免用户误以为「解读坏了」 */
 const PING_SUCCESS_NOTE =
@@ -160,9 +171,36 @@ function buildDryRunModalContent(whatIsWrong, whatToDo) {
 }
 
 /**
- * 深度自检：reflectJobStart + reflectJobDispatch（与记下心情同款完整解读），不写 emotion_kit_records。
+ * 深度自检：优先 quickstartFunctions.reflectDryRunInline（同进程长调用，与 reflectJobRun 一致）；
+ * 未部署该 type 或调用异常时再尝试 emotionReflectWorker(dryRun)，最后兜底 runReflectJobViaClient。
+ * 不写 emotion_kit_records。
  * @returns {Promise<{ ok: boolean, title: string, content: string }>}
  */
+function dryRunPayload(premise) {
+  return {
+    emotions: [{ name: '焦虑', degree: 3 }],
+    question3: '（深度自检）任务偏多、连续熬夜，心里发紧。',
+    premise: premise || undefined
+  };
+}
+
+function modalFromPair(whatIsWrong, whatToDo) {
+  const w = whatIsWrong != null ? String(whatIsWrong) : '';
+  const t = whatToDo != null ? String(whatToDo) : '';
+  if (!w && !t) {
+    return {
+      ok: false,
+      title: '调用失败',
+      content: '深度自检未返回解读内容，请稍后重试。'
+    };
+  }
+  return {
+    ok: true,
+    title: '深度自检成功',
+    content: buildDryRunModalContent(w, t)
+  };
+}
+
 async function runEmotionReflectDryRun() {
   emitDebugLog('H3', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:entry', 'enter dry run helper', {
     hasCloud: !!wx.cloud
@@ -171,42 +209,117 @@ async function runEmotionReflectDryRun() {
     return { ok: false, title: '无法自检', content: '当前未开启云开发或未初始化 wx.cloud。' };
   }
   const premise = (wx.getStorageSync('kit_user_premise') || '').trim();
-  try {
-    emitDebugLog('H10', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:beforeClientRun', 'before runReflectJobViaClient', {
+  const payload = dryRunPayload(premise);
+
+  /** @param {{ whatIsWrong?: string, whatToDo?: string }} pair */
+  const tryQuickstartInline = async () => {
+    emitDebugLog('H10', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:inline', 'before reflectDryRunInline', {
       hasPremise: !!premise
     });
+    const inlineRes = await wx.cloud.callFunction(
+      withCloudEnv({
+        ...CF_QS_SLOW,
+        data: { type: 'reflectDryRunInline', data: payload }
+      })
+    );
+    const ir = (inlineRes && inlineRes.result) || {};
+    const err = (ir.errMsg && String(ir.errMsg)) || '';
+    if (/未知 type/.test(err)) return { skip: true };
+    if (!ir.success) {
+      if (/未登录|no openid|OPENID|请先登录/i.test(err)) {
+        return {
+          skip: false,
+          out: { ok: false, title: '无法自检', content: err || '请先使用微信授权登录后再试。' }
+        };
+      }
+      return { skip: true };
+    }
+    const pair = ir.data && typeof ir.data === 'object' ? ir.data : {};
+    return { skip: false, out: modalFromPair(pair.whatIsWrong, pair.whatToDo) };
+  };
+
+  const tryWorker = async () => {
+    emitDebugLog('H10', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:worker', 'before emotionReflectWorker dryRun', {
+      hasPremise: !!premise
+    });
+    const wRes = await wx.cloud.callFunction(
+      withCloudEnv({
+        ...CF_WORKER,
+        data: { dryRun: true, ...payload }
+      })
+    );
+    const wr = (wRes && wRes.result) || {};
+    if (!wr.ok) {
+      return { ok: false, title: '调用失败', content: wr.err || 'emotionReflectWorker 未返回成功，请查看云函数日志。' };
+    }
+    const pair = wr.data && typeof wr.data === 'object' ? wr.data : {};
+    return modalFromPair(pair.whatIsWrong, pair.whatToDo);
+  };
+
+  const tryReflectJob = async () => {
+    emitDebugLog('H10', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:reflectJob', 'before runReflectJobViaClient', {});
     const { whatIsWrong, whatToDo } = await runReflectJobViaClient(wx.cloud, {
       kind: 'dryRun',
-      /** 与记下心情一致：轮询需覆盖「首调 3s 限制 + 百炼 10～60s + 单次 status 可能慢至 ~22s」 */
       maxWaitMs: CLOUD_AI_POLL_MAX_MS,
-      payload: {
-        dryRun: true,
-        emotions: [{ name: '焦虑', degree: 3 }],
-        question3: '（深度自检）任务偏多、连续熬夜，心里发紧。',
-        premise: premise || undefined
-      }
+      payload: { dryRun: true, ...payload }
     });
-    emitDebugLog('H10', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:success', 'runReflectJobViaClient success', {
-      wrongLen: String(whatIsWrong || '').length,
-      todoLen: String(whatToDo || '').length
-    });
-    return {
-      ok: true,
-      title: '深度自检成功',
-      content: buildDryRunModalContent(whatIsWrong, whatToDo)
-    };
+    return modalFromPair(whatIsWrong, whatToDo);
+  };
+
+  try {
+    let inline;
+    try {
+      inline = await withTimeout(tryQuickstartInline(), DRY_RUN_PER_CALL_WALL_MS, 'dryRun_step_timeout');
+    } catch (ie) {
+      emitDebugLog('H10', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:inlineCatch', 'reflectDryRunInline threw or wall timeout', {
+        errMsg: (ie && (ie.message || ie.errMsg)) || ''
+      });
+      inline = { skip: true };
+    }
+    if (inline && !inline.skip && inline.out) {
+      emitDebugLog('H10', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:inlineDone', 'inline path settled', {
+        ok: !!inline.out.ok
+      });
+      return inline.out;
+    }
+
+    try {
+      const out = await withTimeout(tryWorker(), DRY_RUN_PER_CALL_WALL_MS, 'dryRun_step_timeout');
+      emitDebugLog('H10', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:workerDone', 'worker path settled', {
+        ok: !!out.ok
+      });
+      if (out.ok) return out;
+    } catch (we) {
+      emitDebugLog('H10', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:workerCatch', 'worker dryRun threw', {
+        errMsg: (we && (we.message || we.errMsg)) || ''
+      });
+    }
+
+    try {
+      const out = await tryReflectJob();
+      emitDebugLog('H10', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:jobDone', 'reflectJob path settled', {
+        ok: !!out.ok
+      });
+      return out;
+    } catch (je) {
+      emitDebugLog('H10', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:jobCatch', 'reflectJob threw', {
+        errMsg: (je && (je.message || je.errMsg)) || ''
+      });
+      const raw = (je && je.errMsg) || (je && je.message) || String(je);
+      const msg = isCloudInvokeTimeout(je)
+        ? '深度自检等待超时。请重新上传部署 quickstartFunctions（需含 reflectDryRunInline）与 emotionReflectWorker，并在云控制台将超时设为 ≥120s；真机网络稳定后再试。'
+        : raw;
+      return { ok: false, title: '调用失败', content: msg };
+    }
   } catch (e) {
-    emitDebugLog('H10', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:catch', 'runReflectJobViaClient failed', {
+    emitDebugLog('H10', 'dashScopeConnectionTest.js:runEmotionReflectDryRun:catch', 'dryRun outer failed', {
       errMsg: (e && (e.message || e.errMsg)) || ''
     });
+    const raw = (e && e.errMsg) || (e && e.message) || String(e);
     const msg = isCloudInvokeTimeout(e)
-      ? '深度自检请求超时（当前环境存在 3 秒调用限制），已自动转轮询等待；若仍超时，请稍后重试。'
-      : (e && e.errMsg) || (e && e.message) || String(e);
-    return {
-      ok: false,
-      title: '调用失败',
-      content: msg
-    };
+      ? '深度自检调用超时。请确认已部署最新 quickstartFunctions，云函数超时 ≥120s，并在网络稳定时重试。'
+      : raw;
+    return { ok: false, title: '调用失败', content: msg };
   }
 }
 

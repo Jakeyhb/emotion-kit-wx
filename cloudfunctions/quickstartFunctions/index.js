@@ -451,6 +451,38 @@ exports.main = async (event) => {
       return { success: true };
     }
 
+    /**
+     * 深度自检：同进程内跑完整百炼解读（与 reflectJobRun 一致），不写 emotion_kit_records。
+     * 避免小程序直调 emotionReflectWorker 在部分环境下易触发短超时 / 子调用限制。
+     */
+    case "reflectDryRunInline": {
+      const { openid } = await getOpenId();
+      if (!openid) return { success: false, errMsg: "未登录" };
+      const p = event.data || {};
+      const { runReflectInterpretationCore } = require("./emotionReflectShared");
+      const emotions =
+        Array.isArray(p.emotions) && p.emotions.length > 0
+          ? p.emotions
+          : [{ name: "焦虑", degree: 3 }];
+      const question3 =
+        p.question3 != null && String(p.question3).trim()
+          ? String(p.question3).trim()
+          : "（深度自检）任务偏多、连续熬夜，心里发紧。";
+      try {
+        const data = await runReflectInterpretationCore(db, openid, {
+          emotions,
+          question3,
+          premise: p.premise,
+          source: "origin",
+          recordId: "",
+        });
+        return { success: true, data };
+      } catch (e) {
+        console.error("reflectDryRunInline", e);
+        return { success: false, errMsg: e.message || "AI 暂时不可用" };
+      }
+    }
+
     default:
       return { success: false, errMsg: `未知 type: ${event.type}` };
   }

@@ -16,6 +16,18 @@ const CLOUD_AI_POLL_MAX_MS = 180000;
 const CLOUD_AI_CLIENT_WALL_MS =
   CLOUD_AI_POLL_MAX_MS + CLOUD_CALL_FUNCTION_MAX_MS + 45000;
 
+/**
+ * 深度自检单步长调用（reflectDryRunInline / worker dryRun）的客户端墙钟，须略大于云函数控制台超时。
+ * dashScopeConnectionTest 用 Promise.race 与之一致，避免 callFunction 挂死导致一直转圈。
+ */
+const DRY_RUN_PER_CALL_WALL_MS = CLOUD_CALL_FUNCTION_MAX_MS + 20000;
+
+/**
+ * 深度自检最多「inline 一步 + worker 一步 + runReflectJobViaClient 整链」；供「我的」/详情页 loading 兜底，避免比逻辑链还短而误关。
+ */
+const DRY_RUN_FULL_UI_WALL_MS =
+  DRY_RUN_PER_CALL_WALL_MS * 2 + CLOUD_AI_POLL_MAX_MS + CLOUD_CALL_FUNCTION_MAX_MS + 50000;
+
 /** @deprecated 请用 CLOUD_CALL_FUNCTION_MAX_MS；保留别名避免外部引用报错 */
 const CLOUD_AI_TIMEOUT_MS = CLOUD_CALL_FUNCTION_MAX_MS;
 
@@ -275,8 +287,11 @@ module.exports = {
   CLOUD_CALL_FUNCTION_MAX_MS,
   CLOUD_AI_POLL_MAX_MS,
   CLOUD_AI_CLIENT_WALL_MS,
+  DRY_RUN_PER_CALL_WALL_MS,
+  DRY_RUN_FULL_UI_WALL_MS,
   CLOUD_AI_TIMEOUT_MS,
   isCloudInvokeTimeout,
+  withTimeout,
   pollReflectJobUntilDone,
   runReflectJobViaClient
 };
