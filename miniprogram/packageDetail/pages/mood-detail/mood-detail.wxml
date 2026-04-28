@@ -48,7 +48,7 @@
       </view>
     </view>
 
-    <!-- 与 game-time-tracker-wx emotion-detail 一致：有 aiResult 即展示两块；我怎么做优先分段《重点》否则整段 -->
+    <!-- 与 game-time-tracker-wx emotion-detail 一致：有 aiResult 即展示两块 -->
     <view class="section section-ai" wx:if="{{ record.aiResult }}">
       <text class="section-title section-title-ai">我怎么了</text>
       <text class="section-desc">此刻的状态</text>
@@ -61,34 +61,6 @@
         <text wx:for="{{ record.aiResult.whatToDoSegments }}" wx:key="index" class="{{ item.type === 'highlight' ? 'block-text-highlight' : '' }}">{{ item.text }}</text>
       </text>
       <text class="block-text" wx:else>{{ record.aiResult.whatToDo }}</text>
-    </view>
-    <view class="section section-ai-pending" wx:if="{{ record.aiStatus === 'pending' }}">
-      <text class="hint-pending">AI 解读正在生成中，请稍候…</text>
-    </view>
-    <!-- 生成失败：提示 + 重试 -->
-    <view class="section section-ai-failed" wx:if="{{ record.aiStatus === 'failed' }}">
-      <text class="hint-failed">AI 解读生成失败</text>
-      <text class="hint-failed-detail" wx:if="{{ record.aiError }}">{{ record.aiError }}</text>
-      <button class="btn-retry" bindtap="retryAi">重试</button>
-    </view>
-    <!-- 暂无（旧记录或未请求过 AI） -->
-    <view class="section section-no-ai" wx:if="{{ !record.aiResult && record.aiStatus !== 'pending' && record.aiStatus !== 'failed' }}">
-      <text class="hint">暂无 AI 解读，可回到情绪页重新记下一条触发生成。</text>
-      <block wx:if="{{ cloudOk }}">
-        <text class="hint-sub">也可在此检测与「记下心情」相同的百炼联通链路（不写本条数据）。</text>
-        <button
-          class="btn-ai-link"
-          loading="{{ aiLinkTestBusy }}"
-          disabled="{{ aiLinkTestBusy || aiDryRunBusy }}"
-          bindtap="testAiLinkConnectivity"
-        >测试 AI 联通</button>
-        <button
-          class="btn-ai-link btn-ai-link--secondary"
-          loading="{{ aiDryRunBusy }}"
-          disabled="{{ aiLinkTestBusy || aiDryRunBusy }}"
-          bindtap="testDeepReflectDryRun"
-        >深度自检（完整解读）</button>
-      </block>
     </view>
   </block>
   <view class="empty" wx:else>

@@ -1,6 +1,5 @@
 {
   "miniprogramRoot": "miniprogram/",
-  "cloudfunctionRoot": "cloudfunctions/",
   "setting": {
     "urlCheck": true,
     "es6": true,
@@ -47,7 +46,6 @@
   "appid": "wx8f5fbbf32db690b1",
   "projectname": "emotion-kit-wx",
   "libVersion": "3.14.0",
-  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/",
   "condition": {
     "miniprogram": {
       "list": []

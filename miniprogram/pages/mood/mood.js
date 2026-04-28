@@ -1,41 +1,22 @@
 // 每日情绪记录 - 设计原则：安全、低负担、不评判；记录一次即一条数据
-// 权限：每人只能读写自己的情绪数据，本地存储绑定 openid，切换用户时自动清空并拉取
 const STORAGE_KEY = 'kitMoodRecords';
-const LAST_OPENID_KEY = 'kit_mood_last_openid';
 const PREMISE_STORAGE_KEY = 'kit_user_premise';
 const NICK_STORAGE_KEY = 'kit_user_nickname';
 const PREMISE_INTRO_DONE_KEY = 'kit_premise_intro_done';
 const toast = require('../../utils/toast');
-const { pollEmotionAiFromCloud } = require('../../utils/pollCloudAi');
-const {
-  CLOUD_AI_TIMEOUT_MS,
-  CLOUD_AI_POLL_MAX_MS,
-  isCloudInvokeTimeout,
-  runReflectJobViaClient
-} = require('../../utils/cloudAi');
-const {
-  getUserProfileFromCloud,
-  mergeCloudProfileToLocal,
-  upsertUserProfileToCloud
-} = require('../../utils/userProfileCloud');
-
-const CLOUD_DEFAULT_TIMEOUT_MS = 60000;
 
 const CHINA_OFFSET_MS = 8 * 60 * 60 * 1000;
 
-// 中国时区（UTC+8）：当前日期 YYYY-MM-DD
 const getToday = () => {
   const d = new Date(Date.now() + CHINA_OFFSET_MS);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 };
 
-// 时间戳 → 中国时区 HH:mm
 function formatChinaTime(ms) {
   const d = new Date(ms + CHINA_OFFSET_MS);
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
-// 中国时区友好时间：凌晨/上午/中午/下午/晚上 + 时:分
 function formatFriendlyTime(ms) {
   const d = new Date((ms || Date.now()) + CHINA_OFFSET_MS);
   const h = d.getUTCHours();
@@ -45,14 +26,12 @@ function formatFriendlyTime(ms) {
   return `${segment} ${hour12}:${m}`;
 }
 
-// 日期字符串 YYYY-MM-DD → X月X日
 function formatDateShort(dateStr) {
   if (!dateStr || dateStr.length !== 10) return '';
   const [y, m, d] = dateStr.split('-').map(Number);
   return `${m}月${d}日`;
 }
 
-// 列表项标题：疗愈风格。includeDate 为 true 时显示「X月X日 下午 4:29」，否则只显示「下午 4:29」
 const formatRecordTitle = (dateStr, savedAt, includeDate = false) => {
   const timePart = formatFriendlyTime(savedAt || Date.now());
   if (includeDate && dateStr && dateStr.length === 10) {
@@ -61,7 +40,6 @@ const formatRecordTitle = (dateStr, savedAt, includeDate = false) => {
   return timePart;
 };
 
-// 从本地读取记录数组（兼容旧格式：按日期存的对象 → 迁移为按条存的数组）
 function getRecordsArray() {
   const raw = wx.getStorageSync(STORAGE_KEY);
   if (Array.isArray(raw)) {
@@ -78,7 +56,6 @@ function getRecordsArray() {
   return [];
 }
 
-// 问题一：此刻主要有哪些情绪？（心理学常用情绪词，可多选）
 const EMOTION_OPTIONS = [
   { name: '焦虑', color: '#8b9cb0' },
   { name: '愤怒', color: '#a87a7a' },
@@ -97,7 +74,6 @@ const EMOTION_OPTIONS = [
   { name: '其他', color: '#8b9cb0' }
 ];
 
-// 问题二：强度（1-5），与详情页一致用线的颜色表示
 const DEGREE_OPTIONS = [
   { value: 1, label: '很轻', lineColor: '#d0dcd8' },
   { value: 2, label: '较轻', lineColor: '#a8c0b8' },
@@ -106,27 +82,23 @@ const DEGREE_OPTIONS = [
   { value: 5, label: '很强', lineColor: '#4a6a5a' }
 ];
 
-// 兼容旧版：根据 mood 或第一条情绪名取颜色（日历、列表用）
 function getMoodColor(moodValueOrEmotionName) {
   if (!moodValueOrEmotionName) return '#7a9a8e';
   const opt = EMOTION_OPTIONS.find(o => o.name === moodValueOrEmotionName);
   return opt ? opt.color : '#7a9a8e';
 }
 
-// 中国时区：从 Date 得到中国日期字符串 YYYY-MM-DD
 function getChinaDateStrFromDate(d) {
   const t = (d && d.getTime ? d.getTime() : Date.now()) + CHINA_OFFSET_MS;
   const x = new Date(t);
   return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}-${String(x.getUTCDate()).padStart(2, '0')}`;
 }
 
-// 中国时区：某日星期几 0=Sun, 1=Mon, ...
 function getChinaDayOfWeek(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
-// 日期字符串加减天数
 function addDaysToDateStr(dateStr, delta) {
   const d = new Date(dateStr.replace(/-/g, '/'));
   d.setDate(d.getDate() + delta);
@@ -134,14 +106,12 @@ function addDaysToDateStr(dateStr, delta) {
   return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-// 中国时区：某日期所在周的周一 YYYY-MM-DD
 function getMondayOfWeekChina(dateStr) {
   const dow = getChinaDayOfWeek(dateStr);
   const offset = dow === 0 ? -6 : 1 - dow;
   return addDaysToDateStr(dateStr, offset);
 }
 
-// 周历：中国时区，周一为第一天，返回某周 7 天的 { date, dayNum, isToday, hasRecord, moodColor }
 function getWeekDays(refDate, recordsByDate, moodColorByDate) {
   const refStr = getChinaDateStrFromDate(refDate);
   const mondayStr = getMondayOfWeekChina(refStr);
@@ -161,7 +131,6 @@ function getWeekDays(refDate, recordsByDate, moodColorByDate) {
   return days;
 }
 
-// 月历：中国时区，6 行 × 7 列
 function getMonthGrid(refDate, recordsByDate, moodColorByDate) {
   const refStr = getChinaDateStrFromDate(refDate);
   const [refY, refM] = refStr.split('-').map(Number);
@@ -192,7 +161,6 @@ function getMonthGrid(refDate, recordsByDate, moodColorByDate) {
   return grid;
 }
 
-// 某日「第一条」记录（用于日历上显示有无记录）
 function getRecordsByDate(records) {
   const byDate = {};
   (records || []).forEach(r => {
@@ -201,7 +169,6 @@ function getRecordsByDate(records) {
   return byDate;
 }
 
-// 当天出现次数最多的情绪/心情对应的颜色（用于日历色块；新格式用 emotions[0].name）
 function getDominantMoodColorByDate(records) {
   const byDate = {};
   (records || []).forEach(r => {
@@ -226,7 +193,6 @@ function getDominantMoodColorByDate(records) {
   return colorByDate;
 }
 
-// 周标题：如 "1月20日 - 1月26日"
 function getWeekTitle(refDate) {
   const days = getWeekDays(refDate, {});
   if (!days.length) return '';
@@ -235,14 +201,12 @@ function getWeekTitle(refDate) {
   return `${parseInt(first[1])}月${parseInt(first[2])}日 - ${parseInt(last[1])}月${parseInt(last[2])}日`;
 }
 
-// 月标题：中国时区，如 "2025年1月"
 function getMonthTitle(refDate) {
   const s = getChinaDateStrFromDate(refDate);
   const [y, m] = s.split('-');
   return `${y}年${parseInt(m, 10)}月`;
 }
 
-// 日期字符串 → 展示用 "X月X日"
 function formatDateLabel(dateStr) {
   if (!dateStr || dateStr.length < 10) return dateStr || '';
   const parts = dateStr.split('-');
@@ -256,17 +220,15 @@ Page({
     degreeOptions: DEGREE_OPTIONS,
     emotionList: EMOTION_OPTIONS.map(o => ({ ...o, selected: false })),
     selectedEmotions: [],
-    selectedEmotionsWithColor: [], // 带颜色用于问题二展示
+    selectedEmotionsWithColor: [],
     question3: '',
-    userPremise: '', // 用户填写的背景/前提，让 AI 解读更精准
-    showPremiseIntro: false, // 首次必填弹窗
-    showPremiseEdit: false, // 小按钮打开的修改弹窗
-    premiseModalValue: '', // 弹窗内输入框的值（未保存前）
-    isFixedPremiseUser: false,
+    userPremise: '',
+    showPremiseIntro: false,
+    showPremiseEdit: false,
+    premiseModalValue: '',
     todayRecord: null,
     recentList: [],
     showMore: false,
-    // 日历：默认按周显示
     calendarView: 'week',
     calendarRefDate: null,
     weekDays: [],
@@ -275,11 +237,9 @@ Page({
     selectedDate: getToday(),
     selectedDateLabel: formatDateLabel(getToday()),
     selectedDateRecords: [],
-    // 自定义提示
     showToast: false,
     toastText: '',
     toastType: 'success',
-    // 回到顶部：滚动后显示
     showBackTop: false
   },
 
@@ -293,18 +253,16 @@ Page({
   },
 
   onLoad() {
-    // 设置 toast 工具使用的页面实例
     toast.setPage(this);
-    
     const savedPremise = wx.getStorageSync(PREMISE_STORAGE_KEY) || '';
     this.setData({ userPremise: savedPremise });
     this.initCalendar();
-    this.ensureUserEmotionData();
+    this.loadRecords();
   },
 
   onShow() {
     this.setData({ today: getToday() });
-    this.ensureUserEmotionData();
+    this.loadRecords();
     this.refreshCalendar();
     const introDone = wx.getStorageSync(PREMISE_INTRO_DONE_KEY);
     if (!introDone) {
@@ -314,51 +272,6 @@ Page({
         premiseModalValue: saved
       });
     }
-  },
-
-  // 确保本地情绪数据归属当前用户：切换账号时清空本地并拉取云端
-  async ensureUserEmotionData() {
-    if (!wx.cloud) {
-      this.setData({ isFixedPremiseUser: false });
-      this.loadRecords();
-      return;
-    }
-    try {
-      const res = await wx.cloud.callFunction({
-        name: 'quickstartFunctions',
-        data: { type: 'getOpenId' },
-        timeout: CLOUD_DEFAULT_TIMEOUT_MS
-      });
-      const openid = res.result && res.result.openid;
-      this.setData({ isFixedPremiseUser: false });
-      if (!openid) {
-        this.loadRecords();
-        return;
-      }
-      const lastOpenid = wx.getStorageSync(LAST_OPENID_KEY) || '';
-      if (lastOpenid !== openid) {
-        wx.removeStorageSync(STORAGE_KEY);
-        wx.setStorageSync(PREMISE_STORAGE_KEY, '');
-        wx.setStorageSync(NICK_STORAGE_KEY, '');
-        wx.setStorageSync(LAST_OPENID_KEY, openid);
-        this.setData({ userPremise: '' });
-        const listRes = await wx.cloud.callFunction({
-          name: 'quickstartFunctions',
-          data: { type: 'listEmotionRecords' },
-          timeout: CLOUD_DEFAULT_TIMEOUT_MS
-        });
-        const list = (listRes.result && listRes.result.data) || [];
-        if (list.length > 0) {
-          wx.setStorageSync(STORAGE_KEY, list);
-        }
-        const profile = await getUserProfileFromCloud();
-        mergeCloudProfileToLocal(profile);
-        this.setData({ userPremise: wx.getStorageSync(PREMISE_STORAGE_KEY) || '' });
-      }
-    } catch (e) {
-      console.error('ensureUserEmotionData fail', e);
-    }
-    this.loadRecords();
   },
 
   initCalendar() {
@@ -373,23 +286,23 @@ Page({
   refreshCalendar() {
     const records = getRecordsArray();
     const byDate = getRecordsByDate(records);
-  const ref = this.data.calendarRefDate ? new Date(this.data.calendarRefDate) : new Date();
-  const view = this.data.calendarView || 'week';
-  const moodColorByDate = getDominantMoodColorByDate(records);
+    const ref = this.data.calendarRefDate ? new Date(this.data.calendarRefDate) : new Date();
+    const view = this.data.calendarView || 'week';
+    const moodColorByDate = getDominantMoodColorByDate(records);
 
-  if (view === 'week') {
-    const weekDays = getWeekDays(ref, byDate, moodColorByDate);
-    this.setData({
-      weekDays,
-      calendarTitle: getWeekTitle(ref)
-    });
-  } else {
-    const monthGrid = getMonthGrid(ref, byDate, moodColorByDate);
-    this.setData({
-      monthGrid,
-      calendarTitle: getMonthTitle(ref)
-    });
-  }
+    if (view === 'week') {
+      const weekDays = getWeekDays(ref, byDate, moodColorByDate);
+      this.setData({
+        weekDays,
+        calendarTitle: getWeekTitle(ref)
+      });
+    } else {
+      const monthGrid = getMonthGrid(ref, byDate, moodColorByDate);
+      this.setData({
+        monthGrid,
+        calendarTitle: getMonthTitle(ref)
+      });
+    }
     this.updateSelectedDateRecords(records);
   },
 
@@ -407,14 +320,11 @@ Page({
         const emotionsShort = r.emotions && r.emotions.length
           ? (r.emotions.slice(0, 3).map(e => e.name).join('、') + (r.emotions.length > 3 ? ' 等' : ''))
           : (r.tags && r.tags.length ? r.tags.slice(0, 3).join('、') + (r.tags.length > 3 ? ' 等' : '') : '');
-        const whatToDoOneLine = (r.aiResult && (r.aiResult.whatToDo || r.aiResult.whatIsWrong))
-          ? String(r.aiResult.whatToDo || r.aiResult.whatIsWrong).replace(/\s+/g, ' ').replace(/《\/?重点》/g, '').trim() : '';
         return {
           ...r,
           displayTitle: formatRecordTitle(r.date, r.savedAt, false),
           moodColor: getMoodColor(moodKey(r)),
-          emotionsShort,
-          whatToDoOneLine
+          emotionsShort
         };
       });
     this.setData({
@@ -435,15 +345,12 @@ Page({
       const emotionsShort = r.emotions && r.emotions.length
         ? (r.emotions.slice(0, 3).map(e => e.name).join('、') + (r.emotions.length > 3 ? ' 等' : ''))
         : (r.tags && r.tags.length ? r.tags.slice(0, 3).join('、') + (r.tags.length > 3 ? ' 等' : '') : '');
-      const whatToDoOneLine = (r.aiResult && (r.aiResult.whatToDo || r.aiResult.whatIsWrong))
-        ? String(r.aiResult.whatToDo || r.aiResult.whatIsWrong).replace(/\s+/g, ' ').replace(/《\/?重点》/g, '').trim() : '';
       return {
         ...r,
         displayTitle: formatRecordTitle(r.date, r.savedAt, true),
         moodColor: getMoodColor(moodKey),
         displaySummary,
-        emotionsShort,
-        whatToDoOneLine
+        emotionsShort
       };
     });
 
@@ -484,7 +391,6 @@ Page({
 
   switchCalendarView() {
     const next = this.data.calendarView === 'week' ? 'month' : 'week';
-    const ref = new Date(this.data.calendarRefDate || Date.now());
     this.setData({ calendarView: next });
     this.refreshCalendar();
   },
@@ -563,7 +469,6 @@ Page({
       showPremiseIntro: false,
       premiseModalValue: ''
     });
-    upsertUserProfileToCloud({ aiPremise: v }).catch(() => {});
     toast.success('已保存～');
   },
 
@@ -590,7 +495,6 @@ Page({
       showPremiseEdit: false,
       premiseModalValue: ''
     });
-    upsertUserProfileToCloud({ aiPremise: v }).catch(() => {});
     toast.success('已保存～');
   },
 
@@ -643,144 +547,23 @@ Page({
     });
     toast.success('记下啦～', 1500);
     this.loadRecords();
-
-    if (wx.cloud) {
-      const stored = getRecordsArray();
-      const pendingIdx = stored.findIndex(r => r.id === id);
-      if (pendingIdx >= 0) {
-        stored[pendingIdx].aiStatus = 'pending';
-        stored[pendingIdx].aiError = undefined;
-        stored[pendingIdx].aiPendingAt = Date.now();
-        wx.setStorageSync(STORAGE_KEY, stored);
-        this.loadRecords();
-      }
-
-      try {
-        const cur = getRecordsArray().find((r) => r.id === id);
-        if (cur) {
-          await wx.cloud.callFunction({
-            name: 'quickstartFunctions',
-            timeout: CLOUD_DEFAULT_TIMEOUT_MS,
-            data: { type: 'upsertEmotionRecord', data: { id, date: today, record: cur } }
-          });
-        }
-
-        const failAi = (msg) => {
-          const arr = getRecordsArray();
-          const i = arr.findIndex((r) => r.id === id);
-          if (i >= 0) {
-            arr[i].aiStatus = 'failed';
-            arr[i].aiError = msg;
-            arr[i].aiPendingAt = undefined;
-            wx.setStorageSync(STORAGE_KEY, arr);
-          }
-          this.loadRecords();
-          toast.fail(msg, 2500);
-        };
-
-        const succeedAi = (whatIsWrong, whatToDo) => {
-          const arr = getRecordsArray();
-          const i = arr.findIndex((r) => r.id === id);
-          if (i >= 0) {
-            arr[i].aiResult = { whatIsWrong, whatToDo };
-            arr[i].aiStatus = 'done';
-            arr[i].aiError = undefined;
-            arr[i].aiPendingAt = undefined;
-            wx.setStorageSync(STORAGE_KEY, arr);
-          }
-          this.loadRecords();
-          this.syncRecordToCloud(id);
-        };
-
-        try {
-          const { whatIsWrong, whatToDo } = await runReflectJobViaClient(wx.cloud, {
-            kind: 'emotion',
-            payload: {
-              recordId: id,
-              date: today,
-              emotions,
-              question3: (question3 && question3.trim()) || undefined,
-              premise: (this.data.userPremise && this.data.userPremise.trim()) || undefined
-            }
-          });
-          succeedAi(whatIsWrong, whatToDo);
-        } catch (aiErr) {
-          try {
-            const polled = await pollEmotionAiFromCloud(id, { maxWaitMs: CLOUD_AI_POLL_MAX_MS });
-            succeedAi(polled.whatIsWrong, polled.whatToDo);
-          } catch (pe) {
-            if (isCloudInvokeTimeout(aiErr)) {
-              failAi(pe.message || '解读暂时没跟上，稍后再试哦～');
-            } else {
-              throw aiErr;
-            }
-          }
-        }
-      } catch (e) {
-        console.error('emotionReflect fail', e);
-        const msg = isCloudInvokeTimeout(e)
-          ? 'AI 解读等待较久，已暂停；可打开本条详情页点「重试解读」'
-          : (e.errMsg || e.message || '').indexOf('cloud function') >= 0 || (e.errMsg || '').indexOf('callFunction') >= 0
-            ? '网络或服务暂时不可用，稍后再试哦～'
-            : '解读暂时没跟上，稍后再试哦～';
-        const stored2 = getRecordsArray();
-        const idx = stored2.findIndex((r) => r.id === id);
-        if (idx >= 0) {
-          stored2[idx].aiStatus = 'failed';
-          stored2[idx].aiError = msg;
-          stored2[idx].aiPendingAt = undefined;
-          wx.setStorageSync(STORAGE_KEY, stored2);
-          this.loadRecords();
-        }
-        toast.fail(msg, 2500);
-      }
-    } else {
-      this.syncRecordToCloud(id);
-    }
   },
 
-  syncRecordToCloud(id) {
-    if (!wx.cloud) return;
-    const records = getRecordsArray();
-    const record = records.find(r => r.id === id);
-    if (!record) return;
-    wx.cloud
-      .callFunction({
-        name: 'quickstartFunctions',
-        timeout: CLOUD_DEFAULT_TIMEOUT_MS,
-        data: { type: 'upsertEmotionRecord', data: { id, date: record.date, record } }
-      })
-      .catch(e => console.error('syncRecordToCloud fail', e));
-  },
-
-  // 清空所有情绪记录（仅情绪数据，本地+云端）
   clearAllEmotionRecords() {
     wx.showModal({
       title: '清空情绪记录',
-      content: '确定要清空所有情绪记录吗？本地与云端数据都会被删除，且不可恢复。',
+      content: '确定要清空所有情绪记录吗？本地数据将被删除，且不可恢复。',
       confirmText: '清空',
       confirmColor: '#c62828',
-      success: async (res) => {
+      success: (res) => {
         if (!res.confirm) return;
         wx.setStorageSync(STORAGE_KEY, []);
-        if (wx.cloud) {
-          try {
-            await wx.cloud.callFunction({
-              name: 'quickstartFunctions',
-              timeout: CLOUD_DEFAULT_TIMEOUT_MS,
-              data: { type: 'deleteAllEmotionRecords' }
-            });
-          } catch (e) {
-            console.error('deleteAllEmotionRecords fail', e);
-          }
-        }
         this.loadRecords();
         this.showCustomToast('已清空所有情绪记录', 'success');
       }
     });
   },
 
-  // 显示自定义提示（通用）
   showCustomToast(text, type = 'success', duration = 2000) {
     this.setData({
       showToast: true,
