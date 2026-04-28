@@ -1,5 +1,7 @@
 const STORAGE_KEY = 'kitMoodRecords';
+const PREMISE_STORAGE_KEY = 'kit_user_premise';
 const toast = require('../../../utils/toast');
+const { reflectEmotion } = require('../../../utils/apiClient');
 
 const CHINA_OFFSET_MS = 8 * 60 * 60 * 1000;
 
@@ -130,6 +132,41 @@ Page({
     if (record) record = normalizeRecord(record);
     const displayTime = record && record.savedAt ? formatChinaDateTime(record.savedAt) : '';
     this.setData({ record, displayTime });
+  },
+
+  async retryAi() {
+    const { record } = this.data;
+    if (!record || !record.id) return;
+
+    const retryPendingAt = Date.now();
+    updateRecordInStorage(record.id, () => ({ aiStatus: 'pending', aiError: undefined, aiPendingAt: retryPendingAt }));
+    this.setData({ record: { ...record, aiStatus: 'pending', aiError: undefined, aiPendingAt: retryPendingAt } });
+
+    const premise = wx.getStorageSync(PREMISE_STORAGE_KEY) || '';
+    try {
+      const { whatIsWrong, whatToDo } = await reflectEmotion({
+        emotions: record.emotions,
+        question3: record.question3,
+        premise: (premise && premise.trim()) || undefined,
+        recordId: record.id
+      });
+      updateRecordInStorage(record.id, () => ({
+        aiResult: { whatIsWrong, whatToDo },
+        aiStatus: 'done',
+        aiError: undefined,
+        aiPendingAt: undefined
+      }));
+      const nextRec = normalizeRecord(getRecordsArray().find(r => r.id === record.id) || record);
+      this.setData({ record: nextRec });
+      toast.success('解读好了～');
+    } catch (e) {
+      console.error('retryAi fail', e);
+      const msg = (e && e.message) || '解读暂时没跟上，稍后再试哦～';
+      updateRecordInStorage(record.id, () => ({ aiStatus: 'failed', aiError: msg, aiPendingAt: undefined }));
+      const nextRec = normalizeRecord(getRecordsArray().find(r => r.id === record.id) || record);
+      this.setData({ record: nextRec });
+      toast.fail(msg, 2500);
+    }
   },
 
   onReady() {

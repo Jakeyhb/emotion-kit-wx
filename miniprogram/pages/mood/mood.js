@@ -4,6 +4,7 @@ const PREMISE_STORAGE_KEY = 'kit_user_premise';
 const NICK_STORAGE_KEY = 'kit_user_nickname';
 const PREMISE_INTRO_DONE_KEY = 'kit_premise_intro_done';
 const toast = require('../../utils/toast');
+const { reflectEmotion } = require('../../utils/apiClient');
 
 const CHINA_OFFSET_MS = 8 * 60 * 60 * 1000;
 
@@ -530,7 +531,9 @@ Page({
       question3: (question3 && question3.trim()) || undefined,
       moodLabel: summary,
       mood: emotions[0].name,
-      savedAt
+      savedAt,
+      aiStatus: 'pending',
+      aiPendingAt: savedAt
     };
 
     const records = getRecordsArray();
@@ -547,6 +550,41 @@ Page({
     });
     toast.success('记下啦～', 1500);
     this.loadRecords();
+
+    // 调用 node-ai-service 进行 AI 解读
+    const premise = wx.getStorageSync(PREMISE_STORAGE_KEY) || '';
+    try {
+      const { whatIsWrong, whatToDo } = await reflectEmotion({
+        emotions,
+        question3: (question3 && question3.trim()) || undefined,
+        premise: (premise && premise.trim()) || undefined,
+        recordId: id
+      });
+      const arr = getRecordsArray();
+      const i = arr.findIndex(r => r.id === id);
+      if (i >= 0) {
+        arr[i].aiResult = { whatIsWrong, whatToDo };
+        arr[i].aiStatus = 'done';
+        arr[i].aiError = undefined;
+        arr[i].aiPendingAt = undefined;
+        wx.setStorageSync(STORAGE_KEY, arr);
+      }
+      this.loadRecords();
+      toast.success('解读好了～');
+    } catch (e) {
+      console.error('reflectEmotion fail', e);
+      const msg = (e && e.message) || '解读暂时没跟上，稍后再试哦～';
+      const arr = getRecordsArray();
+      const i = arr.findIndex(r => r.id === id);
+      if (i >= 0) {
+        arr[i].aiStatus = 'failed';
+        arr[i].aiError = msg;
+        arr[i].aiPendingAt = undefined;
+        wx.setStorageSync(STORAGE_KEY, arr);
+      }
+      this.loadRecords();
+      toast.fail(msg, 2500);
+    }
   },
 
   clearAllEmotionRecords() {

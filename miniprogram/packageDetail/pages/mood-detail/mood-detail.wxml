@@ -62,6 +62,14 @@
       </text>
       <text class="block-text" wx:else>{{ record.aiResult.whatToDo }}</text>
     </view>
+    <view class="section section-ai-pending" wx:if="{{ record.aiStatus === 'pending' }}">
+      <text class="hint-pending">AI 解读正在生成中，请稍候…</text>
+    </view>
+    <view class="section section-ai-failed" wx:if="{{ record.aiStatus === 'failed' }}">
+      <text class="hint-failed">AI 解读生成失败</text>
+      <text class="hint-failed-detail" wx:if="{{ record.aiError }}">{{ record.aiError }}</text>
+      <button class="btn-retry" bindtap="retryAi">重试</button>
+    </view>
   </block>
   <view class="empty" wx:else>
     <text class="empty-text">未找到该条记录</text>
